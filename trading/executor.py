@@ -1,67 +1,52 @@
-"""Trade execution logic driven by TradingView signals."""
+"""Trade execution logic driven by TradingView signals — uses Hyperliquid perps."""
 from loguru import logger
 from config import cfg
 from trading.signals import TVSignal
-from trading.wallet import get_balance_native
-from trading.dex import execute_swap, get_quote, NATIVE_TOKEN
 from trading.state import state, Position
+from trading import hyperliquid as hl
 import time
 
 
-# Common token addresses per chain (add more as needed)
-TOKENS = {
-    "polygon": {
-        "USDC": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
-        "WMATIC": "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
-        "WETH": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
-        "WBTC": "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6",
-    },
-    "ethereum": {
-        "USDC": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "WETH": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-        "WBTC": "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
-    },
-    "bsc": {
-        "USDT": "0x55d398326f99059fF775485246999027B3197955",
-        "WBNB": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
-        "WETH": "0x2170Ed0880ac9A755fd29B2688956BD959F933F8",
-    },
-}
-
-
-def resolve_token(symbol_or_addr: str, chain: str) -> str:
-    """Return token contract address from symbol or pass-through if already an address."""
-    if symbol_or_addr.startswith("0x"):
-        return symbol_or_addr
-    chain_tokens = TOKENS.get(chain, {})
-    addr = chain_tokens.get(symbol_or_addr.upper())
-    if not addr:
-        raise ValueError(f"Unknown token '{symbol_or_addr}' on {chain}. Pass a contract address instead.")
-    return addr
-
-
-def _trade_amount_native(chain: str) -> float:
-    """Calculate how much native token to use based on MAX_TRADE_PCT."""
-    balance = get_balance_native(chain)
-    return balance * (cfg.MAX_TRADE_PCT / 100)
+def _position_size(coin: str) -> float:
+    """
+    Calculate position size in coin units based on MAX_TRADE_PCT of account value.
+    Falls back to a minimum size if account value is unavailable.
+    """
+    try:
+        summary = hl.get_account_summary()
+        account_value = float(summary.get("account_value") or 0)
+        if account_value <= 0:
+            return 0.0
+        mids = hl.get_all_mids()
+        price = mids.get(coin, 0)
+        if price <= 0:
+            return 0.0
+        usd_to_spend = account_value * (cfg.MAX_TRADE_PCT / 100)
+        return round(usd_to_spend / price, 6)
+    except Exception as e:
+        logger.error(f"Position size calculation failed: {e}")
+        return 0.0
 
 
 async def handle_signal(signal: TVSignal) -> str:
-    """Process a TradingView signal and execute trade if auto_trade is on."""
+    """Process a TradingView signal and execute Hyperliquid perp trade if auto_trade is on."""
     state.log_signal(signal.to_log())
 
+    coin = hl.coin_from_signal(signal.symbol)
+
     if not state.auto_trade:
-        msg = f"Signal received ({signal.indicator} {signal.action} {signal.symbol} @ {signal.price}) — auto-trade is OFF"
+        msg = (
+            f"Signal received ({signal.indicator} {signal.action} {coin} @ {signal.price}) "
+            f"— auto-trade is OFF"
+        )
         logger.info(msg)
         return msg
 
-    chain = signal.chain or cfg.DEFAULT_CHAIN
-
     try:
         if signal.is_buy():
-            return await _open_position(signal, chain)
+            return await _open_long(signal, coin)
         elif signal.is_sell():
-            return await _close_position(signal, chain)
+            return await _close_or_short(signal, coin)
         else:
             return f"Unknown action: {signal.action}"
     except Exception as e:
@@ -69,57 +54,87 @@ async def handle_signal(signal: TVSignal) -> str:
         return f"Trade failed: {e}"
 
 
-async def _open_position(signal: TVSignal, chain: str) -> str:
-    # Determine tokens
-    if signal.token_in and signal.token_out:
-        token_in = resolve_token(signal.token_in, chain)
-        token_out = resolve_token(signal.token_out, chain)
-    else:
-        # Default: spend native token to buy WBTC (override via signal)
-        token_in = NATIVE_TOKEN
-        chain_tokens = TOKENS.get(chain, {})
-        token_out = chain_tokens.get("WBTC") or chain_tokens.get("WETH") or ""
-        if not token_out:
-            return "No default token_out configured for this chain"
+async def _open_long(signal: TVSignal, coin: str) -> str:
+    size = _position_size(coin)
+    if size <= 0:
+        return f"❌ Cannot calculate position size for {coin} — check account balance"
 
-    amount = signal.amount_usd or _trade_amount_native(chain)
-    if amount <= 0:
-        return "Insufficient balance for trade"
-
-    logger.info(f"BUY signal: spending {amount} native → {token_out} on {chain}")
-    tx = execute_swap(token_in, token_out, amount, chain=chain)
+    logger.info(f"Opening LONG {size} {coin} on Hyperliquid @ ~{signal.price}")
+    result = hl.market_open(coin, is_buy=True, size=size)
 
     stop = signal.price * (1 - cfg.STOP_LOSS_PCT / 100)
+    try:
+        hl.set_stop_loss(coin, stop, size)
+    except Exception as e:
+        logger.warning(f"Stop-loss order failed (position still open): {e}")
+
     pos = Position(
-        token_in=token_in,
-        token_out=token_out,
-        amount_in=amount,
-        amount_out=0,
+        token_in="USD",
+        token_out=coin,
+        amount_in=size * signal.price,
+        amount_out=size,
         entry_price=signal.price,
         stop_loss=stop,
-        chain=chain,
-        tx_hash=tx,
+        chain="hyperliquid",
+        tx_hash=str(result),
+        opened_at=time.time(),
     )
     state.positions.append(pos)
-    return f"✅ BUY executed on {chain}\nTx: {tx}\nEntry: {signal.price}\nStop: {stop:.4f}"
+    return (
+        f"✅ LONG opened: {size} {coin} on Hyperliquid\n"
+        f"Entry: ${signal.price:,.4f}\n"
+        f"Stop: ${stop:,.4f}"
+    )
 
 
-async def _close_position(signal: TVSignal, chain: str) -> str:
-    open_pos = state.open_positions()
-    if not open_pos:
-        return "No open positions to close"
+async def _close_or_short(signal: TVSignal, coin: str) -> str:
+    open_pos = [p for p in state.open_positions() if p.token_out == coin]
 
-    results = []
-    for pos in open_pos:
-        try:
-            amount = pos.amount_out if pos.amount_out else _trade_amount_native(chain)
-            tx = execute_swap(pos.token_out, pos.token_in, amount, chain=pos.chain)
-            pos.closed = True
-            pos.close_tx = tx
-            pnl_pct = ((signal.price - pos.entry_price) / pos.entry_price) * 100
-            pos.pnl = pnl_pct
-            results.append(f"✅ CLOSED position\nTx: {tx}\nPnL: {pnl_pct:+.2f}%")
-        except Exception as e:
-            results.append(f"❌ Failed to close: {e}")
+    if open_pos:
+        # Close existing long
+        results = []
+        for pos in open_pos:
+            try:
+                hl.market_close(coin)
+                pnl_pct = ((signal.price - pos.entry_price) / pos.entry_price) * 100
+                pos.closed = True
+                pos.pnl = pnl_pct
+                results.append(
+                    f"✅ CLOSED {coin} @ ${signal.price:,.4f}\n"
+                    f"PnL: {pnl_pct:+.2f}%"
+                )
+            except Exception as e:
+                results.append(f"❌ Close failed for {coin}: {e}")
+        return "\n".join(results)
 
-    return "\n".join(results)
+    # No existing long — open a short
+    size = _position_size(coin)
+    if size <= 0:
+        return f"❌ Cannot calculate position size for {coin}"
+
+    logger.info(f"Opening SHORT {size} {coin} on Hyperliquid @ ~{signal.price}")
+    result = hl.market_open(coin, is_buy=False, size=size)
+
+    stop = signal.price * (1 + cfg.STOP_LOSS_PCT / 100)
+    try:
+        hl.set_stop_loss(coin, stop, size)
+    except Exception as e:
+        logger.warning(f"Stop-loss order failed: {e}")
+
+    pos = Position(
+        token_in="USD",
+        token_out=coin,
+        amount_in=size * signal.price,
+        amount_out=size,
+        entry_price=signal.price,
+        stop_loss=stop,
+        chain="hyperliquid",
+        tx_hash=str(result),
+        opened_at=time.time(),
+    )
+    state.positions.append(pos)
+    return (
+        f"✅ SHORT opened: {size} {coin} on Hyperliquid\n"
+        f"Entry: ${signal.price:,.4f}\n"
+        f"Stop: ${stop:,.4f}"
+    )

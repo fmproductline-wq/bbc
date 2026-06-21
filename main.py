@@ -1,5 +1,5 @@
 """
-Main entrypoint: FastAPI webhook server + Telegram bot running concurrently.
+Main entrypoint: FastAPI webhook server + Telegram bot + periodic agents.
 
 Start with:
     python main.py
@@ -10,15 +10,18 @@ TradingView alert webhook URL:
 import asyncio
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
 from config import cfg
 from trading.signals import TVSignal
 from trading.executor import handle_signal
 from trading.state import state
+from agents.bug_checker import run_bug_check
 from bot.telegram_bot import build_app as build_telegram
 from predictions import kalshi as kalshi_client
 
-app = FastAPI(title="Trading & Prediction Bot", version="1.0.0")
+app = FastAPI(title="Trading & Prediction Bot", version="2.0.0")
+scheduler = AsyncIOScheduler()
 
 
 # ── TradingView Webhook ───────────────────────────────────────────────────────
@@ -26,19 +29,16 @@ app = FastAPI(title="Trading & Prediction Bot", version="1.0.0")
 @app.post("/webhook/tradingview")
 async def tradingview_webhook(request: Request):
     """
-    Receives JSON alerts from TradingView Pine Script.
+    Receives JSON alerts from TradingView Pine Script (Xtreme Trend / HOTT LOTT).
 
-    In TradingView, create an alert on your Xtreme Trend or HOTT/LOTT indicator
-    and set the webhook URL to this endpoint. Alert message format (JSON):
-
+    Alert message format:
     {
       "secret": "your_webhook_secret",
       "indicator": "xtreme_trend",
-      "action": "buy",
+      "action": "{{strategy.order.action}}",
       "symbol": "{{ticker}}",
       "timeframe": "{{interval}}",
-      "price": {{close}},
-      "chain": "polygon"
+      "price": {{close}}
     }
     """
     try:
@@ -46,7 +46,6 @@ async def tradingview_webhook(request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
-    # Validate webhook secret
     if cfg.TRADINGVIEW_WEBHOOK_SECRET and body.get("secret") != cfg.TRADINGVIEW_WEBHOOK_SECRET:
         raise HTTPException(status_code=401, detail="Invalid secret")
 
@@ -56,22 +55,18 @@ async def tradingview_webhook(request: Request):
         raise HTTPException(status_code=422, detail=str(e))
 
     logger.info(f"TradingView signal: {signal.indicator} {signal.action} {signal.symbol} @ {signal.price}")
-
     result = await handle_signal(signal)
-
-    # Notify Telegram
     await _notify_telegram(f"📡 *TradingView Alert*\n{result}")
-
     return {"status": "ok", "result": result}
 
 
 @app.get("/webhook/tradingview")
 async def webhook_test():
-    """Health check endpoint for TradingView to verify the webhook URL."""
-    return {"status": "ok", "message": "Webhook is active"}
+    """Health check for TradingView to verify the webhook URL."""
+    return {"status": "ok", "message": "Webhook active"}
 
 
-# ── Status endpoint ───────────────────────────────────────────────────────────
+# ── Status ────────────────────────────────────────────────────────────────────
 
 @app.get("/")
 async def root():
@@ -104,55 +99,71 @@ async def _notify_telegram(text: str):
                 parse_mode="Markdown",
             )
     except Exception as e:
-        logger.warning(f"Failed to send Telegram notification: {e}")
+        logger.warning(f"Telegram notification failed: {e}")
 
 
-# ── Startup ───────────────────────────────────────────────────────────────────
+# ── Scheduled agents ──────────────────────────────────────────────────────────
+
+async def scheduled_bug_check():
+    """Run bug checker every 30 minutes and alert on issues."""
+    try:
+        result = run_bug_check(auto_remediate=True)
+        if result.has_critical:
+            await _notify_telegram(f"🚨 *Scheduled Bug Check*\n{result.to_telegram()}")
+        elif result.has_warnings:
+            await _notify_telegram(f"⚠️ *Scheduled Bug Check*\n{result.to_telegram()}")
+        else:
+            logger.info("Scheduled bug check: no issues")
+    except Exception as e:
+        logger.error(f"Scheduled bug check failed: {e}")
+        await _notify_telegram(f"❌ Bug checker agent error: {e}")
+
+
+# ── Startup / shutdown ────────────────────────────────────────────────────────
 
 @app.on_event("startup")
 async def startup():
     global _tg_app
     logger.info("Bot starting up…")
 
-    # Try Kalshi login on startup
     if cfg.KALSHI_EMAIL and cfg.KALSHI_PASSWORD:
         try:
             kalshi_client.login()
         except Exception as e:
             logger.warning(f"Kalshi login failed at startup: {e}")
 
-    # Start Telegram bot in background
     if cfg.TELEGRAM_BOT_TOKEN:
         _tg_app = build_telegram()
         await _tg_app.initialize()
         await _tg_app.start()
-        # Use polling in background task
         asyncio.create_task(_run_telegram_polling(_tg_app))
         logger.info("Telegram bot started")
     else:
-        logger.warning("TELEGRAM_BOT_TOKEN not set — bot disabled")
+        logger.warning("TELEGRAM_BOT_TOKEN not set — Telegram disabled")
+
+    # Schedule bug checker every 30 minutes
+    scheduler.add_job(scheduled_bug_check, "interval", minutes=30, id="bug_check")
+    scheduler.start()
+    logger.info("Scheduler started — bug check every 30 min")
+
+    # Run an immediate startup bug check
+    asyncio.create_task(scheduled_bug_check())
 
 
 @app.on_event("shutdown")
 async def shutdown():
     global _tg_app
+    scheduler.shutdown(wait=False)
     if _tg_app:
         await _tg_app.stop()
         await _tg_app.shutdown()
 
 
 async def _run_telegram_polling(tg_app):
-    """Run Telegram polling in the background."""
     await tg_app.updater.start_polling(drop_pending_updates=True)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=False,
-        log_level="info",
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False, log_level="info")

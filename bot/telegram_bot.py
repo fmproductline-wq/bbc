@@ -1,23 +1,22 @@
-"""Telegram bot frontend for the trading + prediction bot."""
+"""Telegram bot frontend — trading, prediction markets, analysis, bug checker."""
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     CallbackQueryHandler,
-    MessageHandler,
     ContextTypes,
-    filters,
 )
 from loguru import logger
 from config import cfg
 from trading.state import state
-from trading.wallet import get_balance_native, get_token_balance
-from trading.dex import execute_swap
+from trading import hyperliquid as hl
 from predictions import polymarket, kalshi, metaculus
+from analysis import market_analyzer as ma
+from analysis import probability as prob
+from agents.bug_checker import run_bug_check
 
 
 def auth(func):
-    """Decorator: only allow configured user."""
     async def wrapper(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         uid = update.effective_user.id if update.effective_user else 0
         if uid != cfg.TELEGRAM_ALLOWED_USER_ID:
@@ -33,14 +32,17 @@ def auth(func):
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     kb = [
         [InlineKeyboardButton("📊 Status", callback_data="status"),
-         InlineKeyboardButton("💼 Positions", callback_data="positions")],
+         InlineKeyboardButton("💼 HL Positions", callback_data="hlpos")],
         [InlineKeyboardButton("🤖 Auto-Trade ON/OFF", callback_data="toggle_trade"),
          InlineKeyboardButton("🎰 Auto-Bet ON/OFF", callback_data="toggle_bet")],
-        [InlineKeyboardButton("💰 Wallet Balance", callback_data="balance"),
+        [InlineKeyboardButton("💰 Account Summary", callback_data="account"),
          InlineKeyboardButton("📜 Signal Log", callback_data="signals")],
-        [InlineKeyboardButton("🔮 Search Polymarket", callback_data="poly_search"),
-         InlineKeyboardButton("📈 Search Kalshi", callback_data="kalshi_search")],
-        [InlineKeyboardButton("🧠 Metaculus", callback_data="meta_search")],
+        [InlineKeyboardButton("📈 Analyze Market", callback_data="analyze_prompt"),
+         InlineKeyboardButton("🔍 Bug Check", callback_data="bugcheck")],
+        [InlineKeyboardButton("🔮 Polymarket", callback_data="poly_search"),
+         InlineKeyboardButton("📊 Kalshi", callback_data="kalshi_search")],
+        [InlineKeyboardButton("🧠 Metaculus", callback_data="meta_search"),
+         InlineKeyboardButton("📐 Prob Analyzer", callback_data="prob_prompt")],
     ]
     await update.message.reply_text(
         "🤖 *Trading & Prediction Bot*\n\nChoose an action:",
@@ -65,39 +67,53 @@ async def cmd_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode="Markdown")
 
 
-# ── /balance ─────────────────────────────────────────────────────────────────
+# ── /account — Hyperliquid account summary ────────────────────────────────────
 
 @auth
-async def cmd_balance(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+async def cmd_account(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("⏳ Fetching Hyperliquid account…")
     try:
-        bal = get_balance_native()
-        chain = cfg.DEFAULT_CHAIN
-        native_sym = {"ethereum": "ETH", "polygon": "MATIC", "bsc": "BNB"}.get(chain, "ETH")
-        await update.message.reply_text(
-            f"💰 Wallet Balance\n`{cfg.WALLET_ADDRESS[:8]}...`\n"
-            f"{chain.capitalize()}: `{bal:.6f} {native_sym}`",
-            parse_mode="Markdown",
+        summary = hl.get_account_summary()
+        positions = summary.get("positions", [])
+        pos_lines = ""
+        for p in positions:
+            pnl = p.get("unrealized_pnl", "?")
+            pos_lines += (
+                f"\n  {p['side']} {p['size']} {p['coin']} "
+                f"@ ${p.get('entry_px', '?')} | PnL: {pnl}"
+            )
+        text = (
+            f"*Hyperliquid Account*\n"
+            f"Value: `${summary.get('account_value', '?')}`\n"
+            f"Margin Used: `${summary.get('total_margin_used', '?')}`\n"
+            f"Notional: `${summary.get('total_ntl_pos', '?')}`\n"
+            f"Positions ({len(positions)}):{pos_lines or ' none'}"
         )
+        await update.message.reply_text(text, parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
 
 
-# ── /positions ────────────────────────────────────────────────────────────────
+# ── /hlpos — live Hyperliquid positions ───────────────────────────────────────
 
 @auth
-async def cmd_positions(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    open_pos = state.open_positions()
-    if not open_pos:
-        await update.message.reply_text("No open positions.")
-        return
-    lines = []
-    for i, p in enumerate(open_pos, 1):
-        lines.append(
-            f"{i}. {p.token_out[:8]}… on {p.chain}\n"
-            f"   Entry: {p.entry_price} | Stop: {p.stop_loss:.4f}\n"
-            f"   Tx: `{p.tx_hash[:16]}…`"
-        )
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+async def cmd_hlpos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    try:
+        summary = hl.get_account_summary()
+        positions = summary.get("positions", [])
+        if not positions:
+            await update.message.reply_text("No open Hyperliquid positions.")
+            return
+        lines = []
+        for p in positions:
+            lines.append(
+                f"*{p['coin']}* {p['side']} x{p.get('leverage', '?')}\n"
+                f"  Size: {p['size']} | Entry: ${p.get('entry_px', '?')}\n"
+                f"  uPnL: {p.get('unrealized_pnl', '?')}"
+            )
+        await update.message.reply_text("\n\n".join(lines), parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
 
 
 # ── /signals ──────────────────────────────────────────────────────────────────
@@ -115,25 +131,218 @@ async def cmd_signals(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("*Last 5 Signals:*\n" + "\n".join(lines), parse_mode="Markdown")
 
 
-# ── /autotrade toggle ─────────────────────────────────────────────────────────
+# ── /autotrade / /autobet ─────────────────────────────────────────────────────
 
 @auth
 async def cmd_toggle_trade(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     state.auto_trade = not state.auto_trade
-    status = "✅ ON" if state.auto_trade else "❌ OFF"
-    await update.message.reply_text(f"Auto-Trade is now {status}")
+    await update.message.reply_text(f"Auto-Trade is now {'✅ ON' if state.auto_trade else '❌ OFF'}")
 
-
-# ── /autobet toggle ───────────────────────────────────────────────────────────
 
 @auth
 async def cmd_toggle_bet(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     state.auto_bet = not state.auto_bet
-    status = "✅ ON" if state.auto_bet else "❌ OFF"
-    await update.message.reply_text(f"Auto-Bet is now {status}")
+    await update.message.reply_text(f"Auto-Bet is now {'✅ ON' if state.auto_bet else '❌ OFF'}")
 
 
-# ── /poly <query> ─────────────────────────────────────────────────────────────
+# ── /long <coin> <size> [leverage] ────────────────────────────────────────────
+
+@auth
+async def cmd_long(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not ctx.args or len(ctx.args) < 2:
+        await update.message.reply_text("Usage: /long <coin> <size>  e.g. /long BTC 0.001")
+        return
+    coin, size = ctx.args[0].upper(), float(ctx.args[1])
+    if len(ctx.args) >= 3:
+        try:
+            hl.set_leverage(coin, int(ctx.args[2]))
+        except Exception:
+            pass
+    await update.message.reply_text(f"⏳ Opening LONG {size} {coin}…")
+    try:
+        result = hl.market_open(coin, True, size)
+        await update.message.reply_text(f"✅ LONG opened\n`{result}`", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
+
+# ── /short <coin> <size> ──────────────────────────────────────────────────────
+
+@auth
+async def cmd_short(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not ctx.args or len(ctx.args) < 2:
+        await update.message.reply_text("Usage: /short <coin> <size>  e.g. /short ETH 0.1")
+        return
+    coin, size = ctx.args[0].upper(), float(ctx.args[1])
+    await update.message.reply_text(f"⏳ Opening SHORT {size} {coin}…")
+    try:
+        result = hl.market_open(coin, False, size)
+        await update.message.reply_text(f"✅ SHORT opened\n`{result}`", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
+
+# ── /close <coin> ─────────────────────────────────────────────────────────────
+
+@auth
+async def cmd_close(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not ctx.args:
+        await update.message.reply_text("Usage: /close <coin>  e.g. /close BTC")
+        return
+    coin = ctx.args[0].upper()
+    await update.message.reply_text(f"⏳ Closing {coin} position…")
+    try:
+        result = hl.market_close(coin)
+        for pos in state.open_positions():
+            if pos.token_out == coin:
+                pos.closed = True
+        await update.message.reply_text(f"✅ Position closed\n`{result}`", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
+
+# ── /leverage <coin> <n> ──────────────────────────────────────────────────────
+
+@auth
+async def cmd_leverage(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not ctx.args or len(ctx.args) < 2:
+        await update.message.reply_text("Usage: /leverage <coin> <n>  e.g. /leverage BTC 5")
+        return
+    coin, lev = ctx.args[0].upper(), int(ctx.args[1])
+    try:
+        hl.set_leverage(coin, lev)
+        await update.message.reply_text(f"✅ Leverage set to {lev}x for {coin}")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
+
+# ── /price <coin> ─────────────────────────────────────────────────────────────
+
+@auth
+async def cmd_price(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not ctx.args:
+        await update.message.reply_text("Usage: /price <coin>  e.g. /price BTC")
+        return
+    coin = ctx.args[0].upper()
+    try:
+        mids = hl.get_all_mids()
+        price = mids.get(coin)
+        if price is None:
+            await update.message.reply_text(f"Unknown coin: {coin}")
+        else:
+            await update.message.reply_text(f"*{coin}* mid price: `${price:,.4f}`", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
+
+# ── /analyze <coin> [timeframe] ───────────────────────────────────────────────
+
+@auth
+async def cmd_analyze(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not ctx.args:
+        await update.message.reply_text(
+            "Usage: /analyze <coin> [timeframe]\n"
+            "Example: /analyze BTC 1h\n"
+            "Timeframes: 1m 5m 15m 1h 4h 1d"
+        )
+        return
+    coin = ctx.args[0].upper()
+    interval = ctx.args[1] if len(ctx.args) > 1 else "1h"
+    await update.message.reply_text(f"⏳ Analyzing {coin} {interval}…")
+    try:
+        report = ma.analyze(coin, interval)
+        await update.message.reply_text(report.to_telegram(), parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Analysis failed: {e}")
+
+
+# ── /bugcheck ─────────────────────────────────────────────────────────────────
+
+@auth
+async def cmd_bugcheck(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🔍 Running bug check…")
+    try:
+        result = run_bug_check(auto_remediate=False)
+        await update.message.reply_text(result.to_telegram(), parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Bug check error: {e}")
+
+
+# ── /bugfix ────────────────────────────────────────────────────────────────────
+
+@auth
+async def cmd_bugfix(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🔧 Running bug check with auto-remediation…")
+    try:
+        result = run_bug_check(auto_remediate=True)
+        await update.message.reply_text(result.to_telegram(), parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
+
+# ── /prob <market_price 0-1> <our_estimate 0-1> [YES|NO] ─────────────────────
+
+@auth
+async def cmd_prob(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not ctx.args or len(ctx.args) < 2:
+        await update.message.reply_text(
+            "Usage: /prob <market_price> <our_estimate> [YES|NO] [platform]\n"
+            "Example: /prob 0.35 0.55 YES polymarket\n"
+            "         /prob 42 60 YES kalshi   ← kalshi uses cents"
+        )
+        return
+    market_raw = float(ctx.args[0])
+    our_est = float(ctx.args[1])
+    side = ctx.args[2].upper() if len(ctx.args) > 2 else "YES"
+    platform = ctx.args[3].lower() if len(ctx.args) > 3 else "polymarket"
+
+    opp = prob.score_opportunity(
+        platform=platform,
+        market_id="manual",
+        question="Manual analysis",
+        market_price_raw=market_raw,
+        our_estimate=our_est,
+        side=side,
+    )
+    await update.message.reply_text(opp.to_telegram(), parse_mode="Markdown")
+
+
+# ── /cryptoprob <coin> <target_price> <days> ─────────────────────────────────
+
+@auth
+async def cmd_cryptoprob(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not ctx.args or len(ctx.args) < 3:
+        await update.message.reply_text(
+            "Usage: /cryptoprob <coin> <target_price> <days>\n"
+            "Example: /cryptoprob BTC 100000 180"
+        )
+        return
+    coin = ctx.args[0].upper()
+    target = float(ctx.args[1])
+    days = int(ctx.args[2])
+
+    try:
+        mids = hl.get_all_mids()
+        current = mids.get(coin, 0)
+        if current <= 0:
+            await update.message.reply_text(f"Cannot get price for {coin}")
+            return
+        p = prob.estimate_crypto_market_prob(current, target, days)
+        direction = "above" if target > current else "below"
+        await update.message.reply_text(
+            f"*{coin} Probability Estimate*\n"
+            f"Current: `${current:,.2f}`\n"
+            f"Target: `${target:,.2f}` ({direction})\n"
+            f"Timeframe: `{days} days`\n\n"
+            f"📊 Estimated probability: `{p*100:.1f}%`\n"
+            f"_(log-normal model, 80% annualized vol assumed)_",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
+
+# ── Polymarket commands ───────────────────────────────────────────────────────
 
 @auth
 async def cmd_poly(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -143,24 +352,19 @@ async def cmd_poly(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not markets:
             await update.message.reply_text("No markets found.")
             return
-        lines = []
-        for m in markets:
-            lines.append(
-                f"*{m['question']}*\n"
-                f"YES: {m['yes_price']} | NO: {m['no_price']}\n"
-                f"ID: `{m['id']}`\n"
-            )
+        lines = [
+            f"*{m['question']}*\nYES: {m['yes_price']} | NO: {m['no_price']}\nID: `{m['id']}`\n"
+            for m in markets
+        ]
         await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"❌ Polymarket error: {e}")
 
 
-# ── /polybuy <token_id> <YES|NO> <price 0-1> <size USDC> ─────────────────────
-
 @auth
 async def cmd_polybuy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not ctx.args or len(ctx.args) < 4:
-        await update.message.reply_text("Usage: /polybuy <token_id> <YES|NO> <price> <size>")
+        await update.message.reply_text("Usage: /polybuy <token_id> <YES|NO> <price 0-1> <size_usdc>")
         return
     token_id, side, price, size = ctx.args[0], ctx.args[1], float(ctx.args[2]), float(ctx.args[3])
     try:
@@ -172,7 +376,7 @@ async def cmd_polybuy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Error: {e}")
 
 
-# ── /kalshi <query> ───────────────────────────────────────────────────────────
+# ── Kalshi commands ───────────────────────────────────────────────────────────
 
 @auth
 async def cmd_kalshi(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -182,19 +386,14 @@ async def cmd_kalshi(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not markets:
             await update.message.reply_text("No markets found.")
             return
-        lines = []
-        for m in markets:
-            lines.append(
-                f"*{m['title']}*\n"
-                f"YES ask: {m['yes_ask']}¢ | NO ask: {m['no_ask']}¢\n"
-                f"Ticker: `{m['ticker']}`\n"
-            )
+        lines = [
+            f"*{m['title']}*\nYES ask: {m['yes_ask']}¢ | NO ask: {m['no_ask']}¢\nTicker: `{m['ticker']}`\n"
+            for m in markets
+        ]
         await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"❌ Kalshi error: {e}")
 
-
-# ── /kalshiorder <ticker> <yes|no> <buy|sell> <count> <price_cents> ───────────
 
 @auth
 async def cmd_kalshiorder(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -211,7 +410,7 @@ async def cmd_kalshiorder(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Error: {e}")
 
 
-# ── /meta <query> ─────────────────────────────────────────────────────────────
+# ── Metaculus commands ────────────────────────────────────────────────────────
 
 @auth
 async def cmd_meta(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -223,11 +422,10 @@ async def cmd_meta(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return
         lines = []
         for q in questions:
-            prob = q["community_prediction"]
-            prob_str = f"{prob*100:.1f}%" if prob else "N/A"
+            prob_val = q["community_prediction"]
+            prob_str = f"{prob_val*100:.1f}%" if prob_val else "N/A"
             lines.append(
-                f"*{q['title']}*\n"
-                f"Community: {prob_str}\n"
+                f"*{q['title']}*\nCommunity: {prob_str}\n"
                 f"ID: `{q['id']}` | [View]({q['url']})\n"
             )
         await update.message.reply_text("\n".join(lines), parse_mode="Markdown", disable_web_page_preview=True)
@@ -235,67 +433,74 @@ async def cmd_meta(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Metaculus error: {e}")
 
 
-# ── /metapredict <question_id> <probability 0-1> ─────────────────────────────
-
 @auth
 async def cmd_metapredict(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not ctx.args or len(ctx.args) < 2:
-        await update.message.reply_text("Usage: /metapredict <question_id> <probability>")
+        await update.message.reply_text("Usage: /metapredict <question_id> <probability 0-1>")
         return
-    qid, prob = int(ctx.args[0]), float(ctx.args[1])
+    qid, p = int(ctx.args[0]), float(ctx.args[1])
     try:
-        metaculus.submit_prediction(qid, prob)
-        await update.message.reply_text(f"✅ Forecast submitted: question {qid} = {prob*100:.1f}%")
+        metaculus.submit_prediction(qid, p)
+        await update.message.reply_text(f"✅ Forecast submitted: Q{qid} = {p*100:.1f}%")
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
 
 
-# ── /swap <token_in> <token_out> <amount> [chain] ────────────────────────────
+# ── /help ─────────────────────────────────────────────────────────────────────
 
 @auth
-async def cmd_swap(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if not ctx.args or len(ctx.args) < 3:
-        await update.message.reply_text(
-            "Usage: /swap <token_in> <token_out> <amount> [chain]\n"
-            "Example: /swap NATIVE WBTC 0.5 polygon"
-        )
-        return
-    token_in = ctx.args[0]
-    token_out = ctx.args[1]
-    amount = float(ctx.args[2])
-    chain = ctx.args[3] if len(ctx.args) > 3 else cfg.DEFAULT_CHAIN
-    await update.message.reply_text(f"⏳ Executing swap {amount} {token_in} → {token_out} on {chain}…")
-    try:
-        from trading.executor import resolve_token
-        from trading.dex import NATIVE_TOKEN
-        t_in = NATIVE_TOKEN if token_in.upper() == "NATIVE" else resolve_token(token_in, chain)
-        t_out = NATIVE_TOKEN if token_out.upper() == "NATIVE" else resolve_token(token_out, chain)
-        tx = execute_swap(t_in, t_out, amount, chain=chain)
-        await update.message.reply_text(f"✅ Swap confirmed\nTx: `{tx}`", parse_mode="Markdown")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Swap failed: {e}")
+async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "*Hyperliquid Perps:*\n"
+        "/account — account summary & positions\n"
+        "/hlpos — live open positions\n"
+        "/long <coin> <size> [lev] — open long\n"
+        "/short <coin> <size> — open short\n"
+        "/close <coin> — close position\n"
+        "/leverage <coin> <n> — set leverage\n"
+        "/price <coin> — mid price\n\n"
+        "*Auto-Trading:*\n"
+        "/autotrade — toggle auto-trade\n"
+        "/autobet — toggle auto-bet\n"
+        "/signals — last 5 TV signals\n\n"
+        "*Analysis:*\n"
+        "/analyze <coin> [tf] — full TA report\n"
+        "/cryptoprob <coin> <target> <days> — log-normal price probability\n\n"
+        "*Probability Analyzer:*\n"
+        "/prob <mkt_price> <our_est> [YES|NO] [platform]\n\n"
+        "*Bug Checker Agent:*\n"
+        "/bugcheck — scan for issues\n"
+        "/bugfix — scan + auto-remediate\n\n"
+        "*Prediction Markets:*\n"
+        "/poly <query> | /polybuy <id> <YES|NO> <price> <size>\n"
+        "/kalshi <query> | /kalshiorder <ticker> <yes|no> <buy|sell> <count> <¢>\n"
+        "/meta <query> | /metapredict <id> <0-1>\n"
+    )
+    await update.message.reply_text(text, parse_mode="Markdown")
 
 
-# ── Inline button callbacks ───────────────────────────────────────────────────
+# ── Inline callbacks ──────────────────────────────────────────────────────────
 
 async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
 
-    fake_update = update
-    if data == "status":
-        await cmd_status(fake_update, ctx)
-    elif data == "positions":
-        await cmd_positions(fake_update, ctx)
-    elif data == "balance":
-        await cmd_balance(fake_update, ctx)
-    elif data == "signals":
-        await cmd_signals(fake_update, ctx)
-    elif data == "toggle_trade":
-        await cmd_toggle_trade(fake_update, ctx)
-    elif data == "toggle_bet":
-        await cmd_toggle_bet(fake_update, ctx)
+    dispatch = {
+        "status": cmd_status,
+        "hlpos": cmd_hlpos,
+        "account": cmd_account,
+        "signals": cmd_signals,
+        "toggle_trade": cmd_toggle_trade,
+        "toggle_bet": cmd_toggle_bet,
+        "bugcheck": cmd_bugcheck,
+    }
+    if data in dispatch:
+        await dispatch[data](update, ctx)
+    elif data == "analyze_prompt":
+        await query.message.reply_text("Send: /analyze <coin> [tf]  e.g. /analyze BTC 1h")
+    elif data == "prob_prompt":
+        await query.message.reply_text("Send: /prob <mkt_price> <our_est> [YES|NO] [platform]")
     elif data == "poly_search":
         await query.message.reply_text("Send: /poly <keyword>  e.g. /poly bitcoin")
     elif data == "kalshi_search":
@@ -304,49 +509,26 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("Send: /meta <keyword>  e.g. /meta inflation")
 
 
-# ── help ──────────────────────────────────────────────────────────────────────
-
-@auth
-async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "*Commands:*\n"
-        "/start — main menu\n"
-        "/status — bot status\n"
-        "/balance — wallet balance\n"
-        "/positions — open positions\n"
-        "/signals — last 5 TradingView signals\n"
-        "/autotrade — toggle auto-trading\n"
-        "/autobet — toggle auto-betting\n"
-        "/swap <in> <out> <amount> [chain] — manual swap\n\n"
-        "*Polymarket:*\n"
-        "/poly <query> — search markets\n"
-        "/polybuy <token_id> <YES|NO> <price> <size_usdc>\n\n"
-        "*Kalshi:*\n"
-        "/kalshi <query> — search markets\n"
-        "/kalshiorder <ticker> <yes|no> <buy|sell> <count> <cents>\n\n"
-        "*Metaculus:*\n"
-        "/meta <query> — search questions\n"
-        "/metapredict <question_id> <0.0-1.0>\n"
-    )
-    await update.message.reply_text(text, parse_mode="Markdown")
-
+# ── App builder ───────────────────────────────────────────────────────────────
 
 def build_app():
     app = ApplicationBuilder().token(cfg.TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("status", cmd_status))
-    app.add_handler(CommandHandler("balance", cmd_balance))
-    app.add_handler(CommandHandler("positions", cmd_positions))
-    app.add_handler(CommandHandler("signals", cmd_signals))
-    app.add_handler(CommandHandler("autotrade", cmd_toggle_trade))
-    app.add_handler(CommandHandler("autobet", cmd_toggle_bet))
-    app.add_handler(CommandHandler("swap", cmd_swap))
-    app.add_handler(CommandHandler("poly", cmd_poly))
-    app.add_handler(CommandHandler("polybuy", cmd_polybuy))
-    app.add_handler(CommandHandler("kalshi", cmd_kalshi))
-    app.add_handler(CommandHandler("kalshiorder", cmd_kalshiorder))
-    app.add_handler(CommandHandler("meta", cmd_meta))
-    app.add_handler(CommandHandler("metapredict", cmd_metapredict))
-    app.add_handler(CommandHandler("help", cmd_help))
+
+    handlers = [
+        ("start", cmd_start), ("help", cmd_help), ("status", cmd_status),
+        ("account", cmd_account), ("hlpos", cmd_hlpos),
+        ("long", cmd_long), ("short", cmd_short), ("close", cmd_close),
+        ("leverage", cmd_leverage), ("price", cmd_price),
+        ("analyze", cmd_analyze),
+        ("bugcheck", cmd_bugcheck), ("bugfix", cmd_bugfix),
+        ("prob", cmd_prob), ("cryptoprob", cmd_cryptoprob),
+        ("autotrade", cmd_toggle_trade), ("autobet", cmd_toggle_bet),
+        ("signals", cmd_signals),
+        ("poly", cmd_poly), ("polybuy", cmd_polybuy),
+        ("kalshi", cmd_kalshi), ("kalshiorder", cmd_kalshiorder),
+        ("meta", cmd_meta), ("metapredict", cmd_metapredict),
+    ]
+    for name, handler in handlers:
+        app.add_handler(CommandHandler(name, handler))
     app.add_handler(CallbackQueryHandler(callback_handler))
     return app
