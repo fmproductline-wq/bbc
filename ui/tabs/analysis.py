@@ -55,16 +55,28 @@ class AnalysisTab(ctk.CTkFrame):
         self.limit_e.insert(0, "120")
         self.limit_e.pack(fill="x")
 
-        # Indicator toggles
-        lbl("Indicators").pack(fill="x", pady=(10, 4))
+        # ── Built-in indicators (always on, non-removable) ────────────────────
+        built_in_frame = ctk.CTkFrame(form, fg_color=BG_INPUT,
+                                       corner_radius=6, border_width=1,
+                                       border_color=BORDER)
+        built_in_frame.pack(fill="x", pady=(10, 4))
+        ctk.CTkLabel(built_in_frame, text="● BUILT-IN  (always on)",
+                     font=("Inter", 9, "bold"), text_color=ACCENT).pack(anchor="w", padx=8, pady=(6, 2))
+        for txt in ["  HOTT — High Optimised Trend Tracker", "  LOTT — Low  Optimised Trend Tracker",
+                    "  Xtreme Trend  ▲▼  signals"]:
+            ctk.CTkLabel(built_in_frame, text=txt, font=FONT_SMALL,
+                         text_color=TEXT_SECONDARY).pack(anchor="w", padx=8, pady=1)
+        ctk.CTkFrame(built_in_frame, height=4, fg_color="transparent").pack()
+
+        # ── Optional overlays ─────────────────────────────────────────────────
+        lbl("Optional overlays").pack(fill="x", pady=(10, 4))
         ind_row = ctk.CTkFrame(form, fg_color="transparent")
         ind_row.pack(fill="x")
 
         self._show_ema    = ctk.BooleanVar(value=True)
-        self._show_hott   = ctk.BooleanVar(value=True)
         self._show_rsi    = ctk.BooleanVar(value=True)
-        self._show_macd   = ctk.BooleanVar(value=True)
-        self._show_volume = ctk.BooleanVar(value=True)
+        self._show_macd   = ctk.BooleanVar(value=False)
+        self._show_volume = ctk.BooleanVar(value=False)
 
         def ck(text, var):
             return ctk.CTkCheckBox(ind_row, text=text, variable=var,
@@ -73,10 +85,8 @@ class AnalysisTab(ctk.CTkFrame):
                                    checkmark_color=BG_DARK,
                                    command=self._redraw_if_ready)
 
-        for w in [ck("EMA", self._show_ema), ck("HOTT/LOTT", self._show_hott)]:
-            w.pack(anchor="w", pady=1)
-        for w in [ck("RSI", self._show_rsi), ck("MACD", self._show_macd),
-                  ck("Volume", self._show_volume)]:
+        for w in [ck("EMA 9 / 21", self._show_ema), ck("RSI", self._show_rsi),
+                  ck("MACD", self._show_macd), ck("Volume", self._show_volume)]:
             w.pack(anchor="w", pady=1)
 
         ctk.CTkButton(form, text="▶  Load Chart", fg_color=ACCENT, text_color=BG_DARK,
@@ -147,18 +157,19 @@ class AnalysisTab(ctk.CTkFrame):
                                f"No data for {coin} — check ticker", "ERROR")
                     return
 
-                # ── Indicators ──────────────────────────────────────────────
-                df = ma.hott_lott(df)
-                df = ma.xtreme_trend(df)
+                # ── Proprietary indicators — always calculated, always shown ──
+                df = ma.hott_lott(df)       # adds: hott, lott, hott_lott_trend
+                df = ma.xtreme_trend(df)    # adds: ema_fast, ema_slow, xt_signal
+
                 from analysis.market_analyzer import rsi as calc_rsi, ema
                 df["rsi"] = calc_rsi(df["close"])
 
-                # EMA fast / slow
-                if self._show_ema.get():
-                    df["ema_fast"] = ema(df["close"], 9)
-                    df["ema_slow"] = ema(df["close"], 21)
+                # ── Optional overlays ────────────────────────────────────────
+                # xtreme_trend already sets ema_fast/slow (8/21); override with
+                # display EMAs (9/21) only if user wants the EMA overlay.
+                if not self._show_ema.get():
+                    df = df.drop(columns=["ema_fast", "ema_slow"], errors="ignore")
 
-                # MACD
                 if self._show_macd.get():
                     exp1 = df["close"].ewm(span=12, adjust=False).mean()
                     exp2 = df["close"].ewm(span=26, adjust=False).mean()
@@ -166,9 +177,6 @@ class AnalysisTab(ctk.CTkFrame):
                     df["macd_signal"] = df["macd"].ewm(span=9, adjust=False).mean()
                     df["macd_hist"]   = df["macd"] - df["macd_signal"]
 
-                # Strip indicators from chart if toggles off
-                if not self._show_hott.get():
-                    df = df.drop(columns=["hott", "lott"], errors="ignore")
                 if not self._show_rsi.get():
                     df = df.drop(columns=["rsi"], errors="ignore")
 
@@ -201,24 +209,33 @@ class AnalysisTab(ctk.CTkFrame):
             self._run_analysis()
 
     def _after_basic_report(self, df, coin, tf):
-        """Basic price/momentum report for non-crypto assets."""
+        """Price/momentum report for non-crypto assets (futures, FX, indices)."""
         import numpy as np
-        close = df["close"]
+        close   = df["close"]
         rsi_val = df["rsi"].iloc[-1] if "rsi" in df.columns else float("nan")
         change_pct = (close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100 if len(close) > 1 else 0.0
-        trend = "BULLISH" if close.iloc[-1] > close.rolling(20).mean().iloc[-1] else "BEARISH"
+        ma20  = close.rolling(20).mean().iloc[-1]
+        trend = "BULLISH" if close.iloc[-1] > ma20 else "BEARISH"
+
+        hl_signal = int(df["hott_lott_trend"].iloc[-1]) if "hott_lott_trend" in df.columns else 0
+        xt_signal = int(df["xt_signal"].iloc[-1])       if "xt_signal"       in df.columns else 0
 
         lines = [
             ("─" * 38, "DEFAULT"),
             (f" {coin} / {tf}  —  ${close.iloc[-1]:,.4f}", "DEFAULT"),
             ("─" * 38, "DEFAULT"),
-            (f"Change:     {change_pct:+.2f}%",
+            (f"Change:       {change_pct:+.2f}%",
              "SUCCESS" if change_pct >= 0 else "ERROR"),
-            (f"Trend (20): {trend}",
+            (f"Trend (MA20): {trend}",
              "SUCCESS" if trend == "BULLISH" else "ERROR"),
-            (f"RSI:        {rsi_val:.1f}" if not np.isnan(rsi_val) else "RSI: —", "DEFAULT"),
+            (f"RSI:          {rsi_val:.1f}" if not np.isnan(rsi_val) else "RSI: —", "DEFAULT"),
             ("─" * 38, "DEFAULT"),
-            ("All indicators calculated locally — data is private.", "DEFAULT"),
+            (f"HOTT/LOTT:    {'▲ UP' if hl_signal==1 else '▼ DOWN' if hl_signal==-1 else '— FLAT'}",
+             "SUCCESS" if hl_signal == 1 else "ERROR" if hl_signal == -1 else "DEFAULT"),
+            (f"Xtreme Trend: {'▲ BUY' if xt_signal==1 else '▼ SELL' if xt_signal==-1 else '— FLAT'}",
+             "SUCCESS" if xt_signal == 1 else "ERROR" if xt_signal == -1 else "DEFAULT"),
+            ("─" * 38, "DEFAULT"),
+            ("Indicators calculated locally — data is private.", "DEFAULT"),
         ]
         self.after(0, self.report_box.clear)
         for text, level in lines:
