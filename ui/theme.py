@@ -1,39 +1,41 @@
-"""Shared colour palette and style constants."""
+"""Shared colour palette and style constants — Best Brand Co. theme."""
 
-# Dark background palette
-BG_DARK   = "#0D1117"   # window background
-BG_CARD   = "#161B22"   # card / frame background
-BG_INPUT  = "#21262D"   # entry / combobox background
-BORDER    = "#30363D"   # subtle borders
+# ── Backgrounds (deep black → dark navy) ──────────────────────────────────────
+BG_DARK   = "#0A0A0F"   # main window — near black
+BG_CARD   = "#10101E"   # card / sidebar background
+BG_INPUT  = "#1A1A2E"   # entry / combobox background
+BORDER    = "#2D2D5E"   # subtle purple-tinted borders
 
-# Accent colours
-ACCENT    = "#58A6FF"   # blue  — primary buttons, highlights
-GREEN     = "#3FB950"   # profit / buy / bullish
-RED       = "#F85149"   # loss  / sell / bearish
-YELLOW    = "#D29922"   # warning
-PURPLE    = "#BC8CFF"   # prediction markets
+# ── Accent colours ────────────────────────────────────────────────────────────
+ACCENT    = "#6C63FF"   # brand purple-blue — primary buttons, active nav
+GREEN     = "#00D4AA"   # profit / buy / bullish  (teal-green)
+RED       = "#FF4D6D"   # loss / sell / bearish
+YELLOW    = "#FFD166"   # warning
+PURPLE    = "#A855F7"   # prediction markets / secondary highlight
+BLUE      = "#3B82F6"   # links, info, secondary actions
+WHITE     = "#FFFFFF"   # pure white — logo text, headings
 
-# Text
-TEXT_PRIMARY   = "#E6EDF3"
-TEXT_SECONDARY = "#8B949E"
-TEXT_MUTED     = "#484F58"
+# ── Text ──────────────────────────────────────────────────────────────────────
+TEXT_PRIMARY   = "#FFFFFF"   # headings, key values — pure white
+TEXT_SECONDARY = "#B0B0CC"   # labels, subtitles — light lavender-grey
+TEXT_MUTED     = "#5A5A80"   # disabled, hints
 
-# Chart colours
-CHART_BG     = "#0D1117"
-CHART_GRID   = "#21262D"
-CHART_CANDLE_UP   = "#3FB950"
-CHART_CANDLE_DOWN = "#F85149"
-CHART_EMA_FAST    = "#58A6FF"
-CHART_EMA_SLOW    = "#BC8CFF"
-CHART_ATR         = "#D29922"
+# ── Chart colours ─────────────────────────────────────────────────────────────
+CHART_BG          = "#0A0A0F"
+CHART_GRID        = "#1A1A2E"
+CHART_CANDLE_UP   = "#00D4AA"
+CHART_CANDLE_DOWN = "#FF4D6D"
+CHART_EMA_FAST    = "#6C63FF"
+CHART_EMA_SLOW    = "#A855F7"
+CHART_ATR         = "#FFD166"
 
-# Fonts  (customtkinter uses tuples)
+# ── Fonts  (customtkinter uses tuples) ────────────────────────────────────────
 FONT_TITLE  = ("Inter", 20, "bold")
 FONT_HEADER = ("Inter", 14, "bold")
 FONT_BODY   = ("Inter", 12)
 FONT_SMALL  = ("Inter", 10)
 FONT_MONO   = ("Courier New", 11)
 
-# Sizing
+# ── Sizing ────────────────────────────────────────────────────────────────────
 CORNER_RADIUS = 8
 PAD = 12

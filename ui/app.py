@@ -5,9 +5,10 @@ Run with:  python desktop_app.py
 """
 import sys
 import threading
+from pathlib import Path
 import customtkinter as ctk
 from ui.theme import (
-    BG_DARK, BG_CARD, BORDER, ACCENT, GREEN, RED, YELLOW,
+    BG_DARK, BG_CARD, BORDER, ACCENT, PURPLE, GREEN, RED, WHITE,
     TEXT_PRIMARY, TEXT_SECONDARY, FONT_TITLE, FONT_BODY, FONT_SMALL,
 )
 
@@ -26,8 +27,8 @@ class SidebarButton(ctk.CTkButton):
         kwargs.setdefault("anchor", "w")
         kwargs.setdefault("font", FONT_BODY)
         kwargs.setdefault("fg_color", ACCENT if active else "transparent")
-        kwargs.setdefault("text_color", TEXT_PRIMARY)
-        kwargs.setdefault("hover_color", "#21262D")
+        kwargs.setdefault("text_color", WHITE if active else TEXT_PRIMARY)
+        kwargs.setdefault("hover_color", "#1A1A2E")
         super().__init__(master, text=f"  {icon}  {text}" if icon else f"  {text}", **kwargs)
 
 
@@ -63,11 +64,28 @@ class MainApp(ctk.CTk):
 
         # Logo / title
         logo_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        logo_frame.pack(fill="x", padx=16, pady=(20, 8))
-        ctk.CTkLabel(logo_frame, text="Best Brand", font=("Inter", 20, "bold"),
-                     text_color=ACCENT).pack(side="left")
-        ctk.CTkLabel(logo_frame, text=" Bot", font=("Inter", 18),
-                     text_color=TEXT_SECONDARY).pack(side="left", pady=6)
+        logo_frame.pack(fill="x", padx=12, pady=(20, 8))
+
+        _logo_path = Path(__file__).parent.parent / "assets" / "logo.png"
+        if _logo_path.exists():
+            try:
+                from PIL import Image
+                _img = ctk.CTkImage(
+                    light_image=Image.open(_logo_path),
+                    dark_image=Image.open(_logo_path),
+                    size=(160, 52),
+                )
+                ctk.CTkLabel(logo_frame, image=_img, text="").pack(anchor="w")
+            except Exception:
+                _logo_path = None
+
+        if not _logo_path or not _logo_path.exists():
+            ctk.CTkLabel(
+                logo_frame,
+                text="Best Brand Co.",
+                font=("Inter", 18, "bold"),
+                text_color=ACCENT,
+            ).pack(anchor="w")
 
         ctk.CTkFrame(self.sidebar, height=1, fg_color=BORDER).pack(fill="x", padx=12, pady=(0, 8))
 
@@ -116,8 +134,8 @@ class MainApp(ctk.CTk):
                      font=FONT_SMALL, text_color=TEXT_SECONDARY).pack(anchor="w", padx=16, pady=(2, 0))
 
         # Version footer
-        ctk.CTkLabel(self.sidebar, text="v2.0 · Best Brand Corp",
-                     font=FONT_SMALL, text_color=TEXT_SECONDARY).pack(
+        ctk.CTkLabel(self.sidebar, text="v2.0 · Best Brand Co.",
+                     font=FONT_SMALL, text_color=PURPLE).pack(
             side="bottom", pady=12)
 
         # ── Content area ──────────────────────────────────────────────────────
