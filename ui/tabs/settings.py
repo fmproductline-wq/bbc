@@ -73,6 +73,9 @@ class SettingsTab(ctk.CTkFrame):
         ctk.CTkButton(top_bar, text="🔄  Reload", fg_color=BG_INPUT,
                       text_color=ACCENT, hover_color=BORDER,
                       command=self._load_env).pack(side="right", padx=8)
+        ctk.CTkButton(top_bar, text="🔑  Change Password", fg_color=BG_INPUT,
+                      text_color=ACCENT, hover_color=BORDER,
+                      command=self._change_password).pack(side="right", padx=8)
 
         scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
         scroll.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=PAD, pady=PAD)
@@ -128,6 +131,10 @@ class SettingsTab(ctk.CTkFrame):
         log_card.grid(row=3, column=0, columnspan=2, sticky="ew", padx=PAD, pady=(0, PAD))
         self.log = LogBox(log_card, height=60)
         self.log.pack(fill="x", padx=PAD, pady=(0, PAD))
+
+    def _change_password(self):
+        from ui.unlock_screen import ChangePasswordDialog
+        ChangePasswordDialog(self)
 
     def _load_registration(self):
         try:

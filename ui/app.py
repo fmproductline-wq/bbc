@@ -279,16 +279,48 @@ class MainApp(ctk.CTk):
 
 
 def run_app():
-    """Entry point: show age gate + T&C, then launch main window."""
+    """Entry point: T&C → Vault unlock → Main window."""
     from ui.terms_dialog import run_onboarding
+    from ui.unlock_screen import UnlockScreen
+
+    # ── Step 1: terms & age gate ──────────────────────────────────────────────
     root = ctk.CTk()
     root.withdraw()
-
     accepted = run_onboarding(root)
     root.destroy()
-
     if not accepted:
         sys.exit(0)
 
+    # ── Step 2: vault unlock / first-time setup ───────────────────────────────
+    _result: dict = {}
+
+    unlock_root = ctk.CTk()
+    unlock_root.withdraw()
+
+    def _on_success(private_key: str):
+        _result["key"] = private_key
+        unlock_root.quit()
+
+    def _on_cancel():
+        unlock_root.quit()
+
+    screen = UnlockScreen(unlock_root, on_success=_on_success, on_cancel=_on_cancel)
+    screen.lift()
+    unlock_root.mainloop()
+    unlock_root.destroy()
+
+    if "key" not in _result:
+        sys.exit(0)
+
+    # ── Step 3: inject decrypted key into config (memory only) ───────────────
+    import os
+    os.environ["WALLET_PRIVATE_KEY"] = _result["key"]
+    try:
+        from config import cfg
+        cfg.WALLET_PRIVATE_KEY = _result["key"]
+    except Exception:
+        pass
+
+    # ── Step 4: launch main window ────────────────────────────────────────────
     app = MainApp()
     app.mainloop()
