@@ -3,8 +3,8 @@ Install ID & Age Verification Registry.
 
 On first launch, generates a unique install ID (UUID4) and records it
 alongside the user's age verification, T&C acceptance timestamp, and
-platform info. All records are stored locally in ~/.bbc/registry.json
-and appended to a per-install log file ~/.bbc/installs.log.
+platform info. All records are stored locally in ~/.bestbrand/registry.json
+and appended to a per-install log file ~/.bestbrand/installs.log.
 
 This gives the Creator a persistent, per-device compliance record.
 """
@@ -19,7 +19,7 @@ from pathlib import Path
 from loguru import logger
 
 # ── Storage paths ─────────────────────────────────────────────────────────────
-_BBC_DIR  = Path.home() / ".bbc"
+_BBC_DIR  = Path.home() / ".bestbrand"
 _REG_FILE = _BBC_DIR / "registry.json"
 _LOG_FILE = _BBC_DIR / "installs.log"
 
@@ -50,7 +50,7 @@ def _save_registry(data: dict):
 def get_or_create_install_id() -> str:
     """
     Return the persistent install ID for this device.
-    Creates one on first call and stores it in ~/.bbc/registry.json.
+    Creates one on first call and stores it in ~/.bestbrand/registry.json.
     """
     reg = _load_registry()
     if "install_id" not in reg:

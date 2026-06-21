@@ -6,7 +6,7 @@ Flow:
   Step 2 — Full T&C / Risk Disclaimer scroll + checkbox
 
 The user's install ID, acceptance timestamp, and age confirmation are
-recorded in ~/.bbc/registry.json and ~/.bbc/installs.log.
+recorded in ~/.bestbrand/registry.json and ~/.bestbrand/installs.log.
 
 If the device has already accepted (registry.json exists with
 terms_accepted=True) the dialog is skipped entirely.
@@ -68,7 +68,7 @@ This fee is:
   • Charged on every trade (long open, short open, close)
   • Calculated on the full notional value of the position
   • Transferred automatically via Hyperliquid USD transfer
-  • Logged locally in ~/.bbc/fees.jsonl for your records
+  • Logged locally in ~/.bestbrand/fees.jsonl for your records
 
 By using this Software you explicitly consent to the
 collection of this fee on every trade executed through
@@ -414,7 +414,7 @@ class TermsDialog(ctk.CTkToplevel):
     """
     Full T&C modal — shown after age verification passes.
     User must scroll to bottom and check the agreement box.
-    Acceptance is recorded to ~/.bbc/registry.json on agree.
+    Acceptance is recorded to ~/.bestbrand/registry.json on agree.
     """
 
     def __init__(self, parent, install_id: str):

@@ -64,7 +64,7 @@ class MainApp(ctk.CTk):
         # Logo / title
         logo_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         logo_frame.pack(fill="x", padx=16, pady=(20, 8))
-        ctk.CTkLabel(logo_frame, text="BBC", font=("Inter", 26, "bold"),
+        ctk.CTkLabel(logo_frame, text="Best Brand", font=("Inter", 20, "bold"),
                      text_color=ACCENT).pack(side="left")
         ctk.CTkLabel(logo_frame, text=" Bot", font=("Inter", 18),
                      text_color=TEXT_SECONDARY).pack(side="left", pady=6)

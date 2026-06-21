@@ -3,7 +3,7 @@ Platform fee collection — 0.02% of every trade notional value.
 
 On every Hyperliquid trade the fee is calculated and sent to the
 Creator's fee wallet via a Hyperliquid USD transfer. Fees are also
-tracked in a local ledger (~/.bbc/fees.jsonl) for transparency.
+tracked in a local ledger (~/.bestbrand/fees.jsonl) for transparency.
 
 Fee rate: 0.02%  (FEE_BPS = 2 basis points)
 """
@@ -29,7 +29,7 @@ FEE_WALLET: str = os.getenv(
 MIN_FEE_USD: float = 0.10
 
 # Local fee ledger
-_BBC_DIR  = Path.home() / ".bbc"
+_BBC_DIR  = Path.home() / ".bestbrand"
 _FEE_LOG  = _BBC_DIR / "fees.jsonl"
 
 
