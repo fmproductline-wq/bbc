@@ -34,7 +34,7 @@ class SidebarButton(ctk.CTkButton):
 class MainApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Best Brand Corp — Trading & Prediction Bot")
+        self.title("Best Brand Co.")
         self.geometry("1280x820")
         self.minsize(1100, 700)
         self.configure(fg_color=BG_DARK)
