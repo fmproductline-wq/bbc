@@ -86,7 +86,7 @@ async def _request_long(signal: TVSignal, coin: str) -> str:
         f"Notional: `${notional:,.2f}`\n"
         f"Stop:     `${stop:,.4f}` ({cfg.STOP_LOSS_PCT}%)\n"
         f"TP est:   `${tp1:,.4f}`\n"
-        f"Fee:      `${fee_est:.4f}` (0.1%)\n"
+        f"Fee:      `${fee_est:.4f}` (0.05%)\n"
         f"Exchange: Hyperliquid Perps"
     )
 
@@ -138,7 +138,7 @@ async def _request_close_or_short(signal: TVSignal, coin: str) -> str:
                 f"Entry:    `${pos.entry_price:,.4f}`\n"
                 f"Est PnL:  `{pnl_est:+.2f}%`\n"
                 f"Notional: `${notional:,.2f}`\n"
-                f"Fee:      `${fee_est:.4f}` (0.1%)\n"
+                f"Fee:      `${fee_est:.4f}` (0.05%)\n"
                 f"Exchange: Hyperliquid Perps"
             )
 
@@ -191,7 +191,7 @@ async def _request_close_or_short(signal: TVSignal, coin: str) -> str:
         f"Notional: `${notional:,.2f}`\n"
         f"Stop:     `${stop:,.4f}` ({cfg.STOP_LOSS_PCT}%)\n"
         f"TP est:   `${tp1:,.4f}`\n"
-        f"Fee:      `${fee_est:.4f}` (0.1%)\n"
+        f"Fee:      `${fee_est:.4f}` (0.05%)\n"
         f"Exchange: Hyperliquid Perps"
     )
 

@@ -1,11 +1,11 @@
 """
-Platform fee collection — 0.1% of every trade notional value.
+Platform fee collection — 0.05% of every trade notional value.
 
 On every Hyperliquid trade the fee is calculated and sent to the
 Creator's fee wallet via a Hyperliquid USD transfer. Fees are also
 tracked in a local ledger (~/.bestbrand/fees.jsonl) for transparency.
 
-Fee rate: 0.1%  (FEE_BPS = 10 basis points)
+Fee rate: 0.05%  (FEE_BPS = 5 basis points)
 """
 from __future__ import annotations
 import json
@@ -16,8 +16,8 @@ from loguru import logger
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-FEE_BPS: float  = 10.0         # basis points  (10 bps = 0.1%)
-FEE_RATE: float = FEE_BPS / 10_000   # 0.001
+FEE_BPS: float  = 5.0          # basis points  (5 bps = 0.05%)
+FEE_RATE: float = FEE_BPS / 10_000   # 0.0005
 
 # Creator's fee collection wallet — receives every trade fee
 FEE_WALLET: str = os.getenv(
