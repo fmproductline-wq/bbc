@@ -34,6 +34,7 @@ from config import cfg
 from trading.state import state
 from trading import hyperliquid as hl
 from trading.approval import approval_queue, PendingRequest
+from trading.restrictions import guard
 from predictions import polymarket, kalshi, metaculus
 from analysis import market_analyzer as ma
 from analysis import probability as prob
@@ -641,6 +642,42 @@ async def cmd_metapredict(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     asyncio.create_task(_do())
 
 
+# ── /profit — show Trade-Only Mode status and available profit ────────────────
+
+@auth
+async def cmd_profit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(guard.status_text(), parse_mode="Markdown")
+
+
+# ── /withdraw <amount> <wallet> — profit-only withdrawal ─────────────────────
+
+@auth
+async def cmd_withdraw(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not ctx.args or len(ctx.args) < 2:
+        available = guard.ledger.available_profit()
+        await update.message.reply_text(
+            f"Usage: `/withdraw <amount_usd> <wallet_address>`\n\n"
+            f"Available profit to withdraw: `${available:.2f}`\n"
+            f"🔒 Only realised profits can be withdrawn. Principal is protected.",
+            parse_mode="Markdown",
+        )
+        return
+    try:
+        amount = float(ctx.args[0])
+        wallet = ctx.args[1]
+    except ValueError:
+        await update.message.reply_text("❌ Invalid amount. Usage: /withdraw <amount> <wallet>")
+        return
+
+    await update.message.reply_text(f"⏳ Requesting profit withdrawal of ${amount:.2f}…")
+
+    async def _do():
+        from trading.executor import request_profit_withdrawal
+        result = await request_profit_withdrawal(amount, wallet)
+        await _bot_app.bot.send_message(cfg.TELEGRAM_ALLOWED_USER_ID, result, parse_mode="Markdown")
+    asyncio.create_task(_do())
+
+
 # ── /help ─────────────────────────────────────────────────────────────────────
 
 @auth
@@ -661,6 +698,9 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/analyze <coin> [tf]\n"
         "/cryptoprob <coin> <target> <days>\n"
         "/prob <mkt> <est> [YES|NO] [platform]\n\n"
+        "*Trade-Only Mode (Fund Protection):*\n"
+        "/profit — view realised PnL + available profit\n"
+        "/withdraw <amount> <wallet> — withdraw profits only\n\n"
         "*Bug Checker:*\n"
         "/bugcheck /bugfix\n\n"
         "*Prediction Markets:*\n"
@@ -683,6 +723,14 @@ def build_app():
 
     # Register approval notifier with the queue
     approval_queue.set_notifier(_send_approval_request)
+
+    # Wire Trade-Only guard Telegram notifier
+    async def _guard_notify(msg: str):
+        if _bot_app and cfg.TELEGRAM_ALLOWED_USER_ID:
+            await _bot_app.bot.send_message(
+                cfg.TELEGRAM_ALLOWED_USER_ID, msg, parse_mode="Markdown"
+            )
+    guard.set_notifier(_guard_notify)
 
     handlers = [
         ("start",        cmd_start),
@@ -710,6 +758,8 @@ def build_app():
         ("kalshiorder",  cmd_kalshiorder),
         ("meta",         cmd_meta),
         ("metapredict",  cmd_metapredict),
+        ("profit",       cmd_profit),
+        ("withdraw",     cmd_withdraw),
     ]
     for name, handler in handlers:
         app.add_handler(CommandHandler(name, handler))

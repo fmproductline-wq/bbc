@@ -14,6 +14,7 @@ from hyperliquid.info import Info
 from hyperliquid.utils import constants
 from loguru import logger
 from config import cfg
+from trading.restrictions import guard, FundRestrictionError
 
 
 # ── Client singletons ────────────────────────────────────────────────────────
@@ -83,6 +84,28 @@ def get_meta() -> dict:
 
 # ── Order execution ──────────────────────────────────────────────────────────
 
+def usd_transfer(amount: float, destination: str) -> dict:
+    """
+    Transfer USD on Hyperliquid.
+    BLOCKED by Trade-Only Mode unless called via profit withdrawal path.
+    """
+    guard.check("usd_transfer", f"${amount:.4f} → {destination}")
+    exc = _exchange(TESTNET)
+    return exc.usd_transfer(amount, destination)
+
+
+def withdraw_profit(amount_usd: float, destination: str) -> dict:
+    """
+    Withdraw realised profits to a wallet address.
+    Trade-Only Mode enforces that amount ≤ cumulative realised PnL.
+    """
+    approved = guard.check_profit_withdrawal(amount_usd)
+    exc = _exchange(TESTNET)
+    result = exc.usd_transfer(approved, destination)
+    logger.info(f"Profit withdrawal executed: ${approved:.4f} → {destination}")
+    return result
+
+
 def market_open(
     coin: str,
     is_buy: bool,
@@ -98,6 +121,7 @@ def market_open(
         size:      position size in coin units
         slippage:  max acceptable slippage (0.05 = 5%)
     """
+    guard.check("market_open", f"{'BUY' if is_buy else 'SELL'} {size} {coin}")
     exc = _exchange(TESTNET)
     logger.info(f"Hyperliquid market {'BUY' if is_buy else 'SELL'} {size} {coin}")
     result = exc.market_open(coin, is_buy, size, slippage=slippage)
@@ -115,6 +139,7 @@ def market_close(
     Close an existing position (or partial close if size provided).
     If size is None, closes the full position.
     """
+    guard.check("market_close", f"CLOSE {coin}")
     exc = _exchange(TESTNET)
     if size is not None:
         # Determine current side to flip it

@@ -17,6 +17,7 @@ from trading.state import state, Position
 from trading import hyperliquid as hl
 from trading.fees import collect_fee, FEE_RATE
 from trading.approval import approval_queue
+from trading.restrictions import guard, FundRestrictionError
 
 
 # ── Position sizing ───────────────────────────────────────────────────────────
@@ -145,18 +146,26 @@ async def _request_close_or_short(signal: TVSignal, coin: str) -> str:
 
             async def execute_close(_p=_pos) -> str:
                 hl.market_close(coin)
-                actual_pnl = ((signal.price - _p.entry_price) / _p.entry_price) * 100
+                actual_pnl_pct = ((signal.price - _p.entry_price) / _p.entry_price) * 100
+                actual_pnl_usd = _p.amount_in * (actual_pnl_pct / 100)
                 _p.closed = True
-                _p.pnl = actual_pnl
+                _p.pnl = actual_pnl_pct
+                # Record realised PnL in the Trade-Only guard
+                guard.record_trade_pnl(
+                    actual_pnl_usd,
+                    f"{coin} close @ ${signal.price:,.4f}"
+                )
                 try:
                     fee = collect_fee(coin, _p.amount_out, signal.price, "close")
                     fee_str = f"\nPlatform fee: ${fee['fee_usd']:.4f}"
                 except Exception:
                     fee_str = ""
+                profit_avail = guard.ledger.available_profit()
                 return (
                     f"✅ *CLOSED*\n"
                     f"{coin} @ ${signal.price:,.4f}\n"
-                    f"PnL: {actual_pnl:+.2f}%{fee_str}"
+                    f"PnL: {actual_pnl_pct:+.2f}% (${actual_pnl_usd:+.2f}){fee_str}\n"
+                    f"Available profit: ${profit_avail:.2f}"
                 )
 
             results.append(
@@ -322,8 +331,54 @@ async def manual_close(coin: str) -> str:
     async def execute() -> str:
         hl.market_close(coin)
         for p in open_pos:
-            p.closed = True
-        return f"✅ *CLOSED* {coin} @ ~${price:,.4f}"
+            if not p.closed:
+                close_price = price or p.entry_price
+                pnl_usd = p.amount_in * ((close_price - p.entry_price) / p.entry_price)
+                guard.record_trade_pnl(pnl_usd, f"{coin} manual close @ ~${close_price:,.4f}")
+                p.closed = True
+        profit_avail = guard.ledger.available_profit()
+        return (
+            f"✅ *CLOSED* {coin} @ ~${price:,.4f}\n"
+            f"Available profit: ${profit_avail:.2f}"
+        )
+
+    return await approval_queue.request("trade", summary, detail, execute)
+
+
+# ── Profit withdrawal ─────────────────────────────────────────────────────────
+
+async def request_profit_withdrawal(amount_usd: float, destination: str) -> str:
+    """
+    Request approval to withdraw profits to a wallet address.
+    Trade-Only Mode ensures amount never exceeds realised profit.
+    """
+    available = guard.ledger.available_profit()
+
+    if amount_usd > available:
+        return (
+            f"❌ *BLOCKED — Trade-Only Mode*\n"
+            f"Requested: `${amount_usd:.2f}`\n"
+            f"Available profit: `${available:.2f}`\n"
+            f"You can only withdraw realised profits. Principal is protected."
+        )
+
+    summary = f"WITHDRAW PROFIT ${amount_usd:.2f} → {destination[:12]}…"
+    detail  = (
+        f"💰 *PROFIT WITHDRAWAL*\n"
+        f"Amount:    `${amount_usd:.2f}`\n"
+        f"To:        `{destination}`\n"
+        f"Available: `${available:.2f}`\n"
+        f"Remaining: `${available - amount_usd:.2f}`\n\n"
+        f"🔒 Trade-Only Mode: only realised profits may be withdrawn."
+    )
+
+    async def execute() -> str:
+        result = hl.withdraw_profit(amount_usd, destination)
+        return (
+            f"✅ *PROFIT WITHDRAWN*\n"
+            f"${amount_usd:.2f} → `{destination}`\n"
+            f"Remaining profit: ${guard.ledger.available_profit():.2f}"
+        )
 
     return await approval_queue.request("trade", summary, detail, execute)
 
