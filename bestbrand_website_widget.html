@@ -1,21 +1,10 @@
 <!--
   ============================================================
   BEST BRAND CO. — BUY & DOWNLOAD WIDGET
-  ============================================================
-  PASTE THIS ENTIRE BLOCK into any page on bestbrand.ca
-  where you want the Buy button to appear.
-
-  BEFORE YOU PASTE — update ONE line:
-    Replace  YOUR_STRIPE_PUBLISHABLE_KEY
-    with your real key from https://dashboard.stripe.com/apikeys
-    It starts with  pk_live_...
-
-  The widget calls your server at https://bestbrand.ca/payments/...
-  Make sure main.py is running on your server.
+  Paste this entire block into any page on bestbrand.ca
   ============================================================
 -->
 
-<!-- ── Styles (paste inside <head> OR leave here) ── -->
 <style>
   .bb-widget {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -36,6 +25,7 @@
     position: absolute;
     top: 0; left: 0; right: 0; height: 3px;
     background: linear-gradient(90deg, #6C63FF, #A855F7);
+    border-radius: 16px 16px 0 0;
   }
   .bb-badge {
     display: inline-block;
@@ -51,14 +41,14 @@
     margin-bottom: 20px;
   }
   .bb-price {
-    font-size: 52px;
+    font-size: 56px;
     font-weight: 800;
     color: #FFFFFF;
     line-height: 1;
     margin-bottom: 4px;
   }
-  .bb-price span {
-    font-size: 22px;
+  .bb-price sup {
+    font-size: 24px;
     font-weight: 400;
     color: #B0B0CC;
     vertical-align: super;
@@ -66,18 +56,18 @@
   .bb-price-note {
     color: #5A5A80;
     font-size: 13px;
-    margin-bottom: 24px;
+    margin-bottom: 28px;
   }
   .bb-features {
     list-style: none;
     padding: 0;
-    margin: 0 0 28px;
+    margin: 0 0 32px;
     text-align: left;
   }
   .bb-features li {
     color: #B0B0CC;
     font-size: 14px;
-    padding: 7px 0;
+    padding: 8px 0;
     border-bottom: 1px solid #1A1A2E;
     display: flex;
     align-items: center;
@@ -91,32 +81,20 @@
     font-size: 15px;
     min-width: 18px;
   }
-  .bb-buy-btn {
-    display: block;
-    width: 100%;
-    background: linear-gradient(135deg, #6C63FF, #A855F7);
-    color: #fff;
-    font-size: 17px;
-    font-weight: 700;
-    padding: 16px 24px;
-    border: none;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: opacity 0.2s, transform 0.1s;
-    text-decoration: none;
+
+  /* Stripe button container */
+  .bb-stripe-wrap {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
   }
-  .bb-buy-btn:hover { opacity: 0.88; transform: translateY(-1px); }
-  .bb-buy-btn:active { transform: translateY(0); }
-  .bb-buy-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    transform: none;
-  }
+
   .bb-platforms {
     display: flex;
     justify-content: center;
-    gap: 16px;
-    margin-top: 18px;
+    gap: 20px;
+    margin-top: 4px;
+    margin-bottom: 16px;
   }
   .bb-platform {
     color: #5A5A80;
@@ -126,112 +104,110 @@
     align-items: center;
     gap: 4px;
   }
-  .bb-platform span { font-size: 20px; }
+  .bb-platform span { font-size: 22px; }
   .bb-secure {
     color: #5A5A80;
     font-size: 11px;
-    margin-top: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
+    margin-top: 8px;
   }
-  .bb-error {
-    background: rgba(248,81,73,0.1);
-    border: 1px solid #F85149;
-    color: #F85149;
-    border-radius: 8px;
-    padding: 10px 16px;
+  .bb-divider {
+    height: 1px;
+    background: #1A1A2E;
+    margin: 24px 0;
+  }
+  .bb-telegram {
+    background: #10101E;
+    border: 1px solid #2D2D5E;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-top: 16px;
+    text-align: center;
+  }
+  .bb-telegram p {
+    color: #B0B0CC;
     font-size: 13px;
-    margin-top: 12px;
-    display: none;
+    margin: 0 0 14px;
+    line-height: 1.5;
   }
-  .bb-loading { display: inline-block; animation: bb-spin 0.8s linear infinite; }
-  @keyframes bb-spin { to { transform: rotate(360deg); } }
+  .bb-tg-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #2AABEE;
+    color: #fff;
+    font-weight: 700;
+    font-size: 14px;
+    padding: 11px 24px;
+    border-radius: 8px;
+    text-decoration: none;
+    transition: opacity 0.2s;
+  }
+  .bb-tg-btn:hover { opacity: 0.85; }
 </style>
 
-<!-- ── Widget HTML ── -->
+<!-- Load Stripe Buy Button script -->
+<script async src="https://js.stripe.com/v3/buy-button.js"></script>
+
+<!-- ── Widget ── -->
 <div class="bb-widget">
   <div class="bb-card">
 
-    <div class="bb-badge">One-Time Purchase</div>
+    <div class="bb-badge">⚡ One-Time Purchase</div>
 
-    <div class="bb-price"><span>$</span>97</div>
-    <div class="bb-price-note">One-time · Lifetime access · All platforms</div>
+    <div class="bb-price"><sup>$</sup>97</div>
+    <div class="bb-price-note">One-time · Lifetime access · All platforms included</div>
 
     <ul class="bb-features">
       <li>Hyperliquid perpetuals trading bot</li>
       <li>TradingView signal integration</li>
       <li>Telegram approval for every trade</li>
-      <li>Polymarket, Kalshi & Metaculus betting</li>
-      <li>Full desktop app (Windows, Mac, Linux)</li>
+      <li>Polymarket, Kalshi &amp; Metaculus betting</li>
+      <li>Full desktop app — Windows, Mac &amp; Linux</li>
       <li>Market analysis + probability engine</li>
       <li>Automated bug checker agent</li>
-      <li>Lifetime updates via GitHub</li>
+      <li>Lifetime updates</li>
     </ul>
 
-    <button class="bb-buy-btn" id="bb-buy-btn" onclick="bbStartCheckout()">
-      🔒 Buy Now — $97
-    </button>
+    <!-- Stripe Buy Button -->
+    <div class="bb-stripe-wrap">
+      <stripe-buy-button
+        buy-button-id="buy_btn_1TkpsWHOqf7ZTyTySgBm05QB"
+        publishable-key="pk_live_Fr0ifibptQhp8y7dFEaom5kP"
+      >
+      </stripe-buy-button>
+    </div>
 
     <div class="bb-platforms">
-      <div class="bb-platform"><span>🪟</span> Windows</div>
-      <div class="bb-platform"><span>🍎</span> macOS</div>
-      <div class="bb-platform"><span>🐧</span> Linux</div>
-      <div class="bb-platform"><span>📱</span> Telegram</div>
+      <div class="bb-platform"><span>🪟</span>Windows</div>
+      <div class="bb-platform"><span>🍎</span>macOS</div>
+      <div class="bb-platform"><span>🐧</span>Linux</div>
+      <div class="bb-platform"><span>📱</span>Telegram</div>
     </div>
 
     <div class="bb-secure">
-      🔒 Secured by Stripe · No card data stored
+      🔒 Payments secured by Stripe · We never store your card
     </div>
 
-    <div class="bb-error" id="bb-error"></div>
   </div>
+
+  <!-- Phone / Telegram note -->
+  <div class="bb-telegram">
+    <p>📱 <strong style="color:#fff">Using it on your phone?</strong><br>
+      After purchase, download <strong>Telegram</strong> — your bot lives there.
+      Approve trades, check positions, and place orders from anywhere.</p>
+    <a class="bb-tg-btn" href="https://telegram.org/dl" target="_blank">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+        <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/>
+      </svg>
+      Get Telegram Free
+    </a>
+  </div>
+
 </div>
-
-<!-- ── Script ── -->
-<script>
-  // ⚠️  REPLACE THIS with your real Stripe publishable key
-  // Get it at: https://dashboard.stripe.com/apikeys
-  // It starts with pk_live_...
-  var BB_STRIPE_KEY = 'YOUR_STRIPE_PUBLISHABLE_KEY';
-
-  // Your server URL (where main.py is running)
-  var BB_SERVER    = 'https://bestbrand.ca';
-
-  async function bbStartCheckout() {
-    var btn = document.getElementById('bb-buy-btn');
-    var err = document.getElementById('bb-error');
-
-    // Loading state
-    btn.disabled = true;
-    btn.innerHTML = '<span class="bb-loading">⟳</span>  Processing…';
-    err.style.display = 'none';
-
-    try {
-      // Ask your server to create a Stripe Checkout Session
-      var resp = await fetch(BB_SERVER + '/payments/create-checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      if (!resp.ok) {
-        throw new Error('Server error — please try again');
-      }
-
-      var data = await resp.json();
-
-      // Redirect to Stripe-hosted payment page
-      window.location.href = data.url;
-
-    } catch (e) {
-      err.textContent = '❌ ' + (e.message || 'Something went wrong. Please try again.');
-      err.style.display = 'block';
-      btn.disabled = false;
-      btn.innerHTML = '🔒 Buy Now — $97';
-    }
-  }
-</script>
 <!--
   ============================================================
   END OF WIDGET
