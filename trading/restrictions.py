@@ -46,6 +46,9 @@ BLOCKED_ACTIONS = frozenset([
     "l1_transfer",          # L1 bridge transfer blocked
 ])
 
+# ── Allowed prediction market platforms ───────────────────────────────────────
+ALLOWED_BET_PLATFORMS = frozenset(["polymarket", "kalshi"])
+
 
 # ── Profit tracker ────────────────────────────────────────────────────────────
 

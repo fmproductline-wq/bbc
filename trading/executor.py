@@ -17,7 +17,7 @@ from trading.state import state, Position
 from trading import hyperliquid as hl
 from trading.fees import collect_fee, FEE_RATE
 from trading.approval import approval_queue
-from trading.restrictions import guard, FundRestrictionError
+from trading.restrictions import guard, FundRestrictionError, ALLOWED_BET_PLATFORMS
 
 
 # ── Position sizing ───────────────────────────────────────────────────────────
@@ -395,6 +395,12 @@ async def request_bet_approval(
     execute_fn,
 ) -> str:
     """Route any prediction market bet through the approval queue."""
+    if platform.lower() not in ALLOWED_BET_PLATFORMS:
+        return (
+            f"❌ *Platform not allowed*\n"
+            f"`{platform}` is not supported. Betting is restricted to "
+            f"**Polymarket** and **Kalshi** only."
+        )
     summary = f"{platform.upper()} {side} on '{question[:40]}…'"
     detail  = (
         f"🎰 *{platform.upper()} BET*\n"
