@@ -43,6 +43,13 @@ class Config:
     # Metaculus
     METACULUS_TOKEN: str = os.getenv("METACULUS_TOKEN", "")
 
+    # Stripe payments
+    STRIPE_SECRET_KEY: str       = os.getenv("STRIPE_SECRET_KEY", "")
+    STRIPE_PUBLISHABLE_KEY: str  = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
+    STRIPE_WEBHOOK_SECRET: str   = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+    STRIPE_PRICE_ID: str         = os.getenv("STRIPE_PRICE_ID", "")   # one-time price ID
+    APP_BASE_URL: str            = os.getenv("APP_BASE_URL", "https://bestbrand.ca")
+
     # Risk
     MAX_TRADE_PCT: float = float(os.getenv("MAX_TRADE_PCT", "5"))
     MAX_BET_PCT: float = float(os.getenv("MAX_BET_PCT", "2"))

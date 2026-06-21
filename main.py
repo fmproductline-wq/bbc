@@ -10,6 +10,8 @@ TradingView alert webhook URL:
 import asyncio
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
 from config import cfg
@@ -19,8 +21,21 @@ from trading.state import state
 from agents.bug_checker import run_bug_check
 from bot.telegram_bot import build_app as build_telegram
 from predictions import kalshi as kalshi_client
+from payments.stripe_checkout import (
+    create_checkout_session, verify_session,
+    issue_download_token, consume_token,
+    verify_stripe_webhook, DOWNLOAD_LINKS,
+)
 
-app = FastAPI(title="Trading & Prediction Bot", version="2.0.0")
+app = FastAPI(title="Best Brand Co. — Trading Bot", version="2.0.0")
+
+# Allow bestbrand.ca to call these endpoints from the browser
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://bestbrand.ca", "https://www.bestbrand.ca"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
 scheduler = AsyncIOScheduler()
 
 
@@ -82,6 +97,157 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# ── Payment & Download endpoints ──────────────────────────────────────────────
+
+@app.post("/payments/create-checkout")
+async def create_checkout(request: Request):
+    """Called by bestbrand.ca Buy button → returns Stripe Checkout URL."""
+    base = cfg.APP_BASE_URL
+    try:
+        url = create_checkout_session(
+            success_url=f"{base}/payments/success",
+            cancel_url=f"{base}/download",
+        )
+        return {"url": url}
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error(f"Checkout creation failed: {e}")
+        raise HTTPException(status_code=500, detail="Payment unavailable")
+
+
+@app.get("/payments/success", response_class=HTMLResponse)
+async def payment_success(session_id: str = ""):
+    """
+    Stripe redirects here after payment.
+    Verifies the session then shows download links protected by a token.
+    """
+    if not session_id or not verify_session(session_id):
+        return HTMLResponse(_payment_error_page(), status_code=402)
+
+    token = issue_download_token()
+    return HTMLResponse(_success_page(token))
+
+
+@app.get("/payments/download")
+async def download_file(token: str, platform: str):
+    """Serve download link after validating token."""
+    if not consume_token(token):
+        raise HTTPException(status_code=403, detail="Invalid or expired download link. Please purchase again.")
+    link = DOWNLOAD_LINKS.get(platform)
+    if not link:
+        raise HTTPException(status_code=400, detail="Unknown platform")
+    return RedirectResponse(url=link)
+
+
+@app.post("/payments/webhook")
+async def stripe_webhook(request: Request):
+    """Stripe calls this server-side to confirm payment (backup to success redirect)."""
+    payload    = await request.body()
+    sig_header = request.headers.get("stripe-signature", "")
+    event      = verify_stripe_webhook(payload, sig_header, cfg.STRIPE_WEBHOOK_SECRET)
+    if not event:
+        raise HTTPException(status_code=400, detail="Invalid webhook signature")
+
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        logger.info(f"Payment confirmed: {session['id']} — {session.get('customer_email','unknown')}")
+        # Optionally notify yourself via Telegram
+        await _notify_telegram(
+            f"💰 *New Purchase!*\n"
+            f"Email: {session.get('customer_email', 'N/A')}\n"
+            f"Amount: ${session['amount_total'] / 100:.2f} {session['currency'].upper()}\n"
+            f"Session: `{session['id']}`"
+        )
+    return {"status": "ok"}
+
+
+# ── Payment page helpers ───────────────────────────────────────────────────────
+
+def _success_page(token: str) -> str:
+    base = cfg.APP_BASE_URL
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Download — Best Brand Co.</title>
+  <style>
+    *{{margin:0;padding:0;box-sizing:border-box}}
+    body{{background:#0A0A0F;color:#fff;font-family:'Inter',-apple-system,sans-serif;
+         display:flex;flex-direction:column;align-items:center;justify-content:center;
+         min-height:100vh;padding:24px;text-align:center}}
+    .card{{background:#10101E;border:1px solid #2D2D5E;border-radius:16px;
+           padding:48px 40px;max-width:520px;width:100%}}
+    h1{{font-size:28px;margin-bottom:8px;background:linear-gradient(135deg,#fff,#A855F7);
+        -webkit-background-clip:text;-webkit-text-fill-color:transparent}}
+    p{{color:#B0B0CC;margin-bottom:32px;line-height:1.6}}
+    .btn{{display:block;background:linear-gradient(135deg,#6C63FF,#A855F7);
+          color:#fff;text-decoration:none;font-weight:700;font-size:16px;
+          padding:14px 24px;border-radius:10px;margin:10px 0;transition:opacity .2s}}
+    .btn:hover{{opacity:.85}}
+    .btn.mac{{background:linear-gradient(135deg,#555,#333)}}
+    .btn.linux{{background:linear-gradient(135deg,#E95420,#bf3d0e)}}
+    .note{{font-size:12px;color:#5A5A80;margin-top:24px;line-height:1.6}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="font-size:52px;margin-bottom:16px">✅</div>
+    <h1>Payment Successful!</h1>
+    <p>Thank you for purchasing <strong>Best Brand Co.</strong><br>
+       Choose your platform to download:</p>
+
+    <a class="btn" href="{base}/payments/download?token={token}&platform=windows">
+      🪟 Download for Windows (.zip)
+    </a>
+    <a class="btn mac" href="{base}/payments/download?token={token}&platform=mac">
+      🍎 Download for macOS (.dmg)
+    </a>
+    <a class="btn linux" href="{base}/payments/download?token={token}&platform=linux">
+      🐧 Download for Linux (.tar.gz)
+    </a>
+
+    <p class="note">
+      These links are valid for <strong>24 hours</strong>.<br>
+      Bookmark this page or save your links now.<br>
+      Need help? Email <a href="mailto:support@bestbrand.ca"
+        style="color:#6C63FF">support@bestbrand.ca</a>
+    </p>
+  </div>
+</body>
+</html>"""
+
+
+def _payment_error_page() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Payment Error — Best Brand Co.</title>
+  <style>
+    body{{background:#0A0A0F;color:#fff;font-family:sans-serif;
+         display:flex;align-items:center;justify-content:center;
+         min-height:100vh;text-align:center;padding:24px}}
+    .card{{background:#10101E;border:1px solid #F85149;border-radius:16px;padding:48px}}
+    h1{{color:#F85149;margin-bottom:12px}}
+    a{{color:#6C63FF}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="font-size:52px">❌</div>
+    <h1>Payment not verified</h1>
+    <p style="color:#B0B0CC;margin:16px 0">
+      We could not confirm your payment.<br>
+      Please <a href="/download">try again</a> or contact
+      <a href="mailto:support@bestbrand.ca">support@bestbrand.ca</a>
+    </p>
+  </div>
+</body>
+</html>"""
 
 
 # ── Telegram notification helper ──────────────────────────────────────────────
