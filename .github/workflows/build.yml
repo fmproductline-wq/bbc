@@ -1,0 +1,145 @@
+name: Build Best Brand Co. Installers
+
+on:
+  push:
+    branches: [main, claude/gallant-noether-rmw00x]
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  # ── Windows .exe ─────────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Windows EXE
+        run: pyinstaller bestbrand.spec --distpath dist/windows --workpath build/windows
+
+      - name: Zip installer
+        run: |
+          cd dist/windows
+          Compress-Archive -Path BestBrand -DestinationPath ../../BestBrand-Windows.zip
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BestBrand-Windows
+          path: BestBrand-Windows.zip
+          retention-days: 90
+
+  # ── macOS .app ───────────────────────────────────────────────────────────────
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build macOS App
+        run: pyinstaller bestbrand.spec --distpath dist/macos --workpath build/macos
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg || true
+          create-dmg \
+            --volname "Best Brand Co." \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --app-drop-link 400 200 \
+            BestBrand-Mac.dmg \
+            dist/macos/BestBrand.app || \
+          zip -r BestBrand-Mac.zip dist/macos/BestBrand.app
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BestBrand-Mac
+          path: |
+            BestBrand-Mac.dmg
+            BestBrand-Mac.zip
+          retention-days: 90
+
+  # ── Linux .tar.gz ─────────────────────────────────────────────────────────────
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install system deps
+        run: sudo apt-get install -y python3-tk
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Linux binary
+        run: pyinstaller bestbrand.spec --distpath dist/linux --workpath build/linux
+
+      - name: Tar archive
+        run: tar -czf BestBrand-Linux.tar.gz -C dist/linux BestBrand
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BestBrand-Linux
+          path: BestBrand-Linux.tar.gz
+          retention-days: 90
+
+  # ── Create GitHub Release with all 3 files ───────────────────────────────────
+  release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Best Brand Co. ${{ github.ref_name }}
+          body: |
+            ## Best Brand Co. — Trading & Prediction Bot
+
+            Download the installer for your platform below.
+
+            | Platform | File |
+            |----------|------|
+            | Windows | `BestBrand-Windows.zip` → unzip → run `BestBrand.exe` |
+            | macOS   | `BestBrand-Mac.dmg` → open → drag to Applications |
+            | Linux   | `BestBrand-Linux.tar.gz` → unzip → run `./BestBrand` |
+
+            > **First launch:** You will see the Age Verification and Terms screen.
+            > After agreeing, you are taken straight to the dashboard.
+          files: |
+            BestBrand-Windows/BestBrand-Windows.zip
+            BestBrand-Mac/BestBrand-Mac.dmg
+            BestBrand-Linux/BestBrand-Linux.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
