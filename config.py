@@ -43,6 +43,11 @@ class Config:
     # Metaculus
     METACULUS_TOKEN: str = os.getenv("METACULUS_TOKEN", "")
 
+    # Bitrefill storefront
+    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+    BITREFILL_API_KEY: str = os.getenv("BITREFILL_API_KEY", "")
+    BITREFILL_REF_CODE: str = os.getenv("BITREFILL_REF_CODE", "")
+
     # Risk
     MAX_TRADE_PCT: float = float(os.getenv("MAX_TRADE_PCT", "5"))
     MAX_BET_PCT: float = float(os.getenv("MAX_BET_PCT", "2"))

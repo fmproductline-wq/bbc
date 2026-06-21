@@ -8,8 +8,13 @@ TradingView alert webhook URL:
     POST https://yourdomain.com/webhook/tradingview
 """
 import asyncio
+import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from typing import List
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
 from config import cfg
@@ -22,6 +27,69 @@ from predictions import kalshi as kalshi_client
 
 app = FastAPI(title="Trading & Prediction Bot", version="2.0.0")
 scheduler = AsyncIOScheduler()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://fmproductline-wq.github.io"],
+    allow_methods=["POST"],
+    allow_headers=["Content-Type"],
+)
+
+SYSTEM_PROMPT = (
+    "You are the Best Brand AI shopping agent powered by Claude and Bitrefill. "
+    "Help customers find and buy gift cards, mobile top-ups, and eSIMs with crypto. "
+    "Top brands: Amazon, Netflix, Spotify, Apple, Google Play, PlayStation, Xbox, Steam, "
+    "Walmart, DoorDash, Uber, Airbnb, Nike, Starbucks, Disney+, YouTube, Twitch, AT&T, "
+    "T-Mobile, Vanilla Visa and 1,500+ more. "
+    "Payment methods: Bitcoin Lightning, ETH, USDC, USDT. Be friendly and concise."
+)
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatRequest(BaseModel):
+    messages: List[ChatMessage]
+
+
+# ── Bitrefill Storefront Chat ─────────────────────────────────────────────────
+
+@app.post("/chat")
+async def chat(req: ChatRequest):
+    """Proxy chat messages to Claude. API key stays server-side."""
+    if not cfg.ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=503, detail="AI service not configured")
+
+    payload = {
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 512,
+        "system": SYSTEM_PROMPT,
+        "messages": [m.model_dump() for m in req.messages],
+    }
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": cfg.ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            reply = data["content"][0]["text"]
+            return JSONResponse({"reply": reply})
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Anthropic API error: {e}")
+            raise HTTPException(status_code=502, detail="AI service error")
+        except Exception as e:
+            logger.error(f"Chat endpoint error: {e}")
+            raise HTTPException(status_code=500, detail="Internal error")
 
 
 # ── TradingView Webhook ───────────────────────────────────────────────────────
