@@ -60,7 +60,7 @@ purposes.
 3.  PLATFORM FEE DISCLOSURE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-A platform service fee of 0.02% (2 basis points) of the
+A platform service fee of 0.1% (10 basis points) of the
 notional value of each executed trade is automatically
 collected and transferred to the Creator's designated wallet.
 This fee is:
