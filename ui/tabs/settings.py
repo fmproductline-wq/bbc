@@ -99,11 +99,64 @@ class SettingsTab(ctk.CTkFrame):
                 e.pack(fill="x")
                 self._entries[key] = e
 
+        # ── Install ID & compliance row ────────────────────────────────────────
+        info_row = ctk.CTkFrame(self, fg_color="transparent")
+        info_row.grid(row=2, column=0, columnspan=2, sticky="ew", padx=PAD, pady=(0, 4))
+        info_row.columnconfigure(0, weight=1)
+        info_row.columnconfigure(1, weight=1)
+
+        id_card = Card(info_row, title="Install Registration")
+        id_card.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+        self._reg_label = ctk.CTkLabel(id_card, text="Loading…",
+                                        font=("Courier New", 10), text_color=TEXT_SECONDARY,
+                                        anchor="w", justify="left")
+        self._reg_label.pack(fill="x", padx=PAD, pady=(0, PAD))
+        ctk.CTkButton(id_card, text="Refresh Registration Info", fg_color=BG_INPUT,
+                      text_color=ACCENT, hover_color=BORDER, height=28,
+                      command=self._load_registration).pack(fill="x", padx=PAD, pady=(0, PAD))
+
+        fee_card = Card(info_row, title="Fee Ledger (0.02% per trade)")
+        fee_card.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
+        self.fee_box = LogBox(fee_card, height=110)
+        self.fee_box.pack(fill="x", padx=PAD, pady=(0, 4))
+        ctk.CTkButton(fee_card, text="Load Fee Ledger", fg_color=BG_INPUT,
+                      text_color=ACCENT, hover_color=BORDER, height=28,
+                      command=self._load_fees).pack(fill="x", padx=PAD, pady=(0, PAD))
+
         # Status log at bottom
         log_card = Card(self, title="Save Log")
-        log_card.grid(row=2, column=0, columnspan=2, sticky="ew", padx=PAD, pady=(0, PAD))
-        self.log = LogBox(log_card, height=70)
+        log_card.grid(row=3, column=0, columnspan=2, sticky="ew", padx=PAD, pady=(0, PAD))
+        self.log = LogBox(log_card, height=60)
         self.log.pack(fill="x", padx=PAD, pady=(0, PAD))
+
+    def _load_registration(self):
+        try:
+            from registry import get_registry_summary
+            reg = get_registry_summary()
+            lines = "\n".join(f"{k}: {v}" for k, v in reg.items())
+            self._reg_label.configure(text=lines)
+        except Exception as e:
+            self._reg_label.configure(text=f"Error: {e}")
+
+    def _load_fees(self):
+        self.fee_box.clear()
+        try:
+            from trading.fees import get_fee_ledger, get_total_fees_collected
+            records = get_fee_ledger(limit=20)
+            total = get_total_fees_collected()
+            self.fee_box.append(f"Total collected: ${total:.4f}", "SUCCESS")
+            if not records:
+                self.fee_box.append("No fees recorded yet.", "INFO")
+            for r in records:
+                status_color = "SUCCESS" if r.get("status") == "sent" else "WARNING"
+                self.fee_box.append(
+                    f"{r.get('time','?')} | {r.get('direction','?')} "
+                    f"{r.get('size','?')} {r.get('coin','?')} | "
+                    f"Fee: ${r.get('fee_usd',0):.4f} | {r.get('status','?')}",
+                    status_color,
+                )
+        except Exception as e:
+            self.fee_box.append(f"Error: {e}", "ERROR")
 
     def _load_env(self):
         env_vals: dict[str, str] = {}

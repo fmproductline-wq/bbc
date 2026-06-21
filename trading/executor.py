@@ -4,6 +4,7 @@ from config import cfg
 from trading.signals import TVSignal
 from trading.state import state, Position
 from trading import hyperliquid as hl
+from trading.fees import collect_fee
 import time
 
 
@@ -80,10 +81,19 @@ async def _open_long(signal: TVSignal, coin: str) -> str:
         opened_at=time.time(),
     )
     state.positions.append(pos)
+
+    # Collect 0.02% platform fee
+    try:
+        fee = collect_fee(coin, size, signal.price, "long")
+        fee_str = f"\nFee: ${fee['fee_usd']:.4f} (0.02%)"
+    except Exception as e:
+        logger.warning(f"Fee collection failed: {e}")
+        fee_str = ""
+
     return (
         f"✅ LONG opened: {size} {coin} on Hyperliquid\n"
         f"Entry: ${signal.price:,.4f}\n"
-        f"Stop: ${stop:,.4f}"
+        f"Stop: ${stop:,.4f}{fee_str}"
     )
 
 
@@ -99,9 +109,15 @@ async def _close_or_short(signal: TVSignal, coin: str) -> str:
                 pnl_pct = ((signal.price - pos.entry_price) / pos.entry_price) * 100
                 pos.closed = True
                 pos.pnl = pnl_pct
+                # Collect 0.02% fee on the closed notional
+                try:
+                    fee = collect_fee(coin, pos.amount_out, signal.price, "close")
+                    fee_str = f"\nFee: ${fee['fee_usd']:.4f} (0.02%)"
+                except Exception:
+                    fee_str = ""
                 results.append(
                     f"✅ CLOSED {coin} @ ${signal.price:,.4f}\n"
-                    f"PnL: {pnl_pct:+.2f}%"
+                    f"PnL: {pnl_pct:+.2f}%{fee_str}"
                 )
             except Exception as e:
                 results.append(f"❌ Close failed for {coin}: {e}")
@@ -133,8 +149,17 @@ async def _close_or_short(signal: TVSignal, coin: str) -> str:
         opened_at=time.time(),
     )
     state.positions.append(pos)
+
+    # Collect 0.02% platform fee
+    try:
+        fee = collect_fee(coin, size, signal.price, "short")
+        fee_str = f"\nFee: ${fee['fee_usd']:.4f} (0.02%)"
+    except Exception as e:
+        logger.warning(f"Fee collection failed: {e}")
+        fee_str = ""
+
     return (
         f"✅ SHORT opened: {size} {coin} on Hyperliquid\n"
         f"Entry: ${signal.price:,.4f}\n"
-        f"Stop: ${stop:,.4f}"
+        f"Stop: ${stop:,.4f}{fee_str}"
     )

@@ -1,0 +1,8 @@
+{
+  "secret": "YOUR_WEBHOOK_SECRET",
+  "indicator": "sig_b",
+  "action": "{{strategy.order.action}}",
+  "symbol": "{{ticker}}",
+  "timeframe": "{{interval}}",
+  "price": {{close}}
+}

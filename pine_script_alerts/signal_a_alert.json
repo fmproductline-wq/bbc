@@ -1,9 +1,8 @@
 {
   "secret": "YOUR_WEBHOOK_SECRET",
-  "indicator": "xtreme_trend",
+  "indicator": "sig_a",
   "action": "{{strategy.order.action}}",
   "symbol": "{{ticker}}",
   "timeframe": "{{interval}}",
-  "price": {{close}},
-  "chain": "polygon"
+  "price": {{close}}
 }

@@ -163,6 +163,16 @@ class TradingTab(ctk.CTkFrame):
                     result = hl.limit_open(coin, is_buy=(side == "long"), size=size, price=price)
                 if sl_str:
                     hl.set_stop_loss(coin, float(sl_str), size)
+                # Collect 0.02% platform fee
+                try:
+                    from trading.fees import collect_fee
+                    mids = hl.get_all_mids()
+                    exec_price = mids.get(coin, 0) or size
+                    fee = collect_fee(coin, size, exec_price, side)
+                    self.after(0, self.log.append,
+                               f"Fee: ${fee['fee_usd']:.4f} (0.02% of ${fee['notional']:.2f})", "INFO")
+                except Exception as fe:
+                    self.after(0, self.log.append, f"Fee collection: {fe}", "WARNING")
                 self.after(0, self.log.append, f"Order placed: {result}", "SUCCESS")
                 self.after(0, self._refresh_positions)
             except Exception as e:

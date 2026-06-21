@@ -1,13 +1,22 @@
 """
-Terms & Conditions / Disclaimer dialog.
+Age Verification + Terms & Conditions dialog.
 
-Shown once at startup. User must scroll to bottom and tick the checkbox
-before the main app is allowed to open.
+Flow:
+  Step 1 — 18+ Age Confirmation gate (date of birth or checkbox)
+  Step 2 — Full T&C / Risk Disclaimer scroll + checkbox
+
+The user's install ID, acceptance timestamp, and age confirmation are
+recorded in ~/.bbc/registry.json and ~/.bbc/installs.log.
+
+If the device has already accepted (registry.json exists with
+terms_accepted=True) the dialog is skipped entirely.
 """
+from __future__ import annotations
 import customtkinter as ctk
 from ui.theme import (
     BG_DARK, BG_CARD, BG_INPUT, BORDER, ACCENT, RED, YELLOW, GREEN,
-    TEXT_PRIMARY, TEXT_SECONDARY, FONT_TITLE, FONT_BODY, FONT_SMALL, CORNER_RADIUS,
+    TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, FONT_TITLE, FONT_BODY, FONT_SMALL,
+    CORNER_RADIUS,
 )
 
 TERMS_TEXT = """\
@@ -15,13 +24,27 @@ BEST BRAND CORP TRADING & PREDICTION BOT
 SOFTWARE TERMS OF USE, RISK DISCLOSURE & LIABILITY DISCLAIMER
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Last updated: June 21, 2026
+Terms Version: 2026-06-21
 
 PLEASE READ THESE TERMS CAREFULLY BEFORE USING THIS SOFTWARE.
 BY CLICKING "I AGREE AND CONTINUE" YOU CONFIRM THAT YOU HAVE
 READ, UNDERSTOOD, AND AGREED TO EVERY PROVISION BELOW.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1.  ACCEPTANCE OF TERMS
+1.  ELIGIBILITY — 18+ ONLY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This Software is strictly for use by individuals who are at
+least 18 years of age (or the legal adult age in their
+jurisdiction, whichever is higher). By using this Software
+you represent and warrant that you meet this requirement.
+
+Persons under 18 are STRICTLY PROHIBITED from using this
+Software. Misrepresentation of age is a material breach of
+these Terms and may expose the user to legal liability.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2.  ACCEPTANCE OF TERMS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 This software ("the Software") is provided by Best Brand Corp
@@ -29,8 +52,30 @@ and its creator(s) ("the Creator"). By installing, copying, or
 using the Software in any manner you agree to be bound by these
 Terms. If you do not agree, do not use the Software.
 
+Your acceptance, device install ID, timestamp, and age
+confirmation are recorded on your device for compliance
+purposes.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-2.  NO FINANCIAL OR INVESTMENT ADVICE
+3.  PLATFORM FEE DISCLOSURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+A platform service fee of 0.02% (2 basis points) of the
+notional value of each executed trade is automatically
+collected and transferred to the Creator's designated wallet.
+This fee is:
+
+  • Charged on every trade (long open, short open, close)
+  • Calculated on the full notional value of the position
+  • Transferred automatically via Hyperliquid USD transfer
+  • Logged locally in ~/.bbc/fees.jsonl for your records
+
+By using this Software you explicitly consent to the
+collection of this fee on every trade executed through
+the platform.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4.  NO FINANCIAL OR INVESTMENT ADVICE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 The Software is a TECHNICAL TOOL ONLY. Nothing it generates,
@@ -47,7 +92,7 @@ INFORMATIONAL PURPOSES ONLY. They are not recommendations to
 buy, sell, or hold any asset.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-3.  RISK WARNING — TRADING IS EXTREMELY RISKY
+5.  RISK WARNING — TRADING IS EXTREMELY RISKY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 TRADING CRYPTOCURRENCIES, PERPETUAL FUTURES, AND PREDICTION
@@ -74,7 +119,7 @@ You acknowledge and accept that:
   (e) Prediction markets (Polymarket, Kalshi, Metaculus) involve
       speculative wagering. You may lose your entire stake.
 
-  (f) Cryptocurrency and decentralised exchange (DEX) transactions
+  (f) Cryptocurrency and decentralised exchange transactions
       are irreversible once confirmed on-chain. Errors cannot
       be undone.
 
@@ -87,7 +132,7 @@ You acknowledge and accept that:
       reporting or tax advice.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-4.  LIMITATION OF LIABILITY — COMPLETE EXCLUSION
+6.  LIMITATION OF LIABILITY — COMPLETE EXCLUSION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW:
@@ -120,7 +165,7 @@ THE MAXIMUM EXTENT PERMITTED BY LAW, WHICH IN ALL CASES SHALL
 NOT EXCEED ZERO DOLLARS ($0.00 USD).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-5.  YOUR SOLE RESPONSIBILITY
+7.  YOUR SOLE RESPONSIBILITY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 You are solely responsible for:
@@ -145,7 +190,7 @@ You are solely responsible for:
       unattended.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-6.  NO WARRANTY
+8.  NO WARRANTY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT
@@ -160,7 +205,7 @@ THE CREATOR DOES NOT WARRANT THAT:
     wallets, or platforms at all times
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-7.  INDEMNIFICATION
+9.  INDEMNIFICATION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 You agree to indemnify, defend, and hold harmless the Creator
@@ -171,7 +216,7 @@ legal fees) arising from: (a) your use of the Software;
 third-party rights or applicable law.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-8.  THIRD-PARTY SERVICES
+10. THIRD-PARTY SERVICES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 The Software integrates with third-party services including
@@ -181,7 +226,7 @@ affiliated with these services and accepts no liability for
 their availability, accuracy, terms, or actions.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-9.  GOVERNING LAW & DISPUTE RESOLUTION
+11. GOVERNING LAW & DISPUTE RESOLUTION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 These Terms shall be governed by the laws of the jurisdiction
@@ -191,7 +236,7 @@ arbitration on an individual basis. You waive any right to
 participate in class-action proceedings.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-10. AMENDMENT
+12. AMENDMENT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 The Creator reserves the right to modify these Terms at any
@@ -199,7 +244,7 @@ time. Continued use of the Software following any update
 constitutes acceptance of the revised Terms.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-11. ENTIRE AGREEMENT & SEVERABILITY
+13. ENTIRE AGREEMENT & SEVERABILITY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 These Terms constitute the entire agreement between you and
@@ -215,39 +260,176 @@ YOU CONFIRM THAT YOU:
   ✓ Are at least 18 years of age (or the legal adult age in
     your jurisdiction, whichever is higher).
   ✓ Have read and understood all provisions of these Terms.
+  ✓ Accept a 0.02% platform fee on every executed trade.
   ✓ Accept full and sole responsibility for all trading and
     betting decisions made with this Software.
   ✓ Understand and accept the complete risk of financial loss.
   ✓ Release the Creator from all present and future liability
     arising from your use of this Software.
+  ✓ Consent to your install ID and acceptance timestamp being
+    stored locally on this device for compliance purposes.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 © 2026 Best Brand Corp. All rights reserved.
 """
 
 
-class TermsDialog(ctk.CTkToplevel):
-    """
-    Modal Terms & Conditions window.
+# ── Step 1: Age Verification dialog ──────────────────────────────────────────
 
-    Blocks the main window until the user scrolls to the bottom,
-    checks the agreement box, and clicks "I Agree".
-    Returns True if accepted, False if declined/closed.
+class AgeVerificationDialog(ctk.CTkToplevel):
+    """
+    Modal 18+ age gate — shown before the T&C.
+    Requires the user to confirm their birth year (≥ 18 years ago)
+    AND check a declaration checkbox.
     """
 
-    def __init__(self, parent):
+    def __init__(self, parent, install_id: str):
         super().__init__(parent)
-        self.title("Terms of Use & Risk Disclaimer — Best Brand Corp")
-        self.geometry("780x640")
+        self.title("Age Verification — Best Brand Corp")
+        self.geometry("520x420")
         self.resizable(False, False)
         self.configure(fg_color=BG_DARK)
-        self.grab_set()   # modal
+        self.grab_set()
+        self.lift()
+        self.focus_force()
+
+        self.verified = False
+        self._install_id = install_id
+        self._build()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _build(self):
+        import datetime
+        self._current_year = datetime.date.today().year
+
+        # Warning banner
+        banner = ctk.CTkFrame(self, fg_color="#3D1A00", corner_radius=0)
+        banner.pack(fill="x")
+        ctk.CTkLabel(banner, text="🔞  ADULTS ONLY — 18+ REQUIRED",
+                     font=("Inter", 15, "bold"), text_color=YELLOW).pack(pady=14)
+
+        # Body
+        body = ctk.CTkFrame(self, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=30, pady=20)
+
+        ctk.CTkLabel(
+            body,
+            text=(
+                "This application provides access to leveraged cryptocurrency\n"
+                "trading and speculative prediction markets.\n\n"
+                "You must be at least 18 years old to proceed.\n"
+                "Misrepresentation of your age is a violation of our\n"
+                "Terms of Use and may have legal consequences."
+            ),
+            font=FONT_SMALL,
+            text_color=TEXT_SECONDARY,
+            justify="center",
+        ).pack(pady=(0, 20))
+
+        # Birth year entry
+        year_row = ctk.CTkFrame(body, fg_color="transparent")
+        year_row.pack()
+        ctk.CTkLabel(year_row, text="Enter your birth year:", font=FONT_BODY,
+                     text_color=TEXT_PRIMARY).pack(side="left", padx=(0, 12))
+        self.year_entry = ctk.CTkEntry(
+            year_row, width=100, fg_color=BG_INPUT, border_color=BORDER,
+            text_color=TEXT_PRIMARY, font=("Inter", 16, "bold"),
+            justify="center",
+        )
+        self.year_entry.pack(side="left")
+        self.year_entry.bind("<Return>", lambda e: self._verify())
+
+        self.year_error = ctk.CTkLabel(body, text="", font=FONT_SMALL, text_color=RED)
+        self.year_error.pack(pady=(4, 0))
+
+        # Declaration checkbox
+        self.declare_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            body,
+            text=(
+                "I declare that I am 18 years of age or older\n"
+                "and legally permitted to use this Software\n"
+                "in my jurisdiction."
+            ),
+            variable=self.declare_var,
+            fg_color=YELLOW,
+            checkmark_color=BG_DARK,
+            border_color=BORDER,
+            text_color=TEXT_PRIMARY,
+            font=FONT_SMALL,
+        ).pack(pady=16, anchor="center")
+
+        # Install ID display
+        ctk.CTkLabel(body, text=f"Install ID: {self._install_id}",
+                     font=("Courier New", 9), text_color=TEXT_MUTED).pack()
+
+        # Buttons
+        btn_row = ctk.CTkFrame(body, fg_color="transparent")
+        btn_row.pack(fill="x", pady=(16, 0))
+        ctk.CTkButton(btn_row, text="✕  Exit", fg_color=BG_INPUT,
+                      text_color=RED, hover_color=BORDER,
+                      command=self._on_close).pack(side="left")
+        ctk.CTkButton(btn_row, text="Continue →", fg_color=YELLOW,
+                      text_color="black", font=("Inter", 13, "bold"),
+                      command=self._verify).pack(side="right")
+
+    def _verify(self):
+        import datetime
+        year_str = self.year_entry.get().strip()
+
+        if not year_str.isdigit():
+            self.year_error.configure(text="Please enter a valid 4-digit year.")
+            return
+
+        birth_year = int(year_str)
+        age = self._current_year - birth_year
+
+        if age < 18:
+            self.year_error.configure(
+                text=f"You must be at least 18 years old to use this Software."
+            )
+            return
+
+        if age > 120 or birth_year < 1900:
+            self.year_error.configure(text="Please enter a valid birth year.")
+            return
+
+        if not self.declare_var.get():
+            self.year_error.configure(text="Please check the declaration checkbox.")
+            return
+
+        self.verified = True
+        self.grab_release()
+        self.destroy()
+
+    def _on_close(self):
+        self.verified = False
+        self.grab_release()
+        self.destroy()
+
+
+# ── Step 2: Terms & Conditions dialog ─────────────────────────────────────────
+
+class TermsDialog(ctk.CTkToplevel):
+    """
+    Full T&C modal — shown after age verification passes.
+    User must scroll to bottom and check the agreement box.
+    Acceptance is recorded to ~/.bbc/registry.json on agree.
+    """
+
+    def __init__(self, parent, install_id: str):
+        super().__init__(parent)
+        self.title("Terms of Use & Risk Disclaimer — Best Brand Corp")
+        self.geometry("800x660")
+        self.resizable(False, False)
+        self.configure(fg_color=BG_DARK)
+        self.grab_set()
         self.lift()
         self.focus_force()
 
         self.accepted = False
+        self._install_id = install_id
         self._scrolled_to_bottom = False
-
         self._build()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -255,78 +437,45 @@ class TermsDialog(ctk.CTkToplevel):
         # Header
         header = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=0)
         header.pack(fill="x")
+        ctk.CTkLabel(header, text="⚠  Terms of Use, Risk Disclosure & Fee Agreement",
+                     font=("Inter", 14, "bold"), text_color=YELLOW).pack(side="left", padx=20, pady=12)
+        ctk.CTkLabel(header, text=f"Install ID: {self._install_id[:18]}…",
+                     font=("Courier New", 9), text_color=TEXT_SECONDARY).pack(side="right", padx=16)
 
-        ctk.CTkLabel(
-            header,
-            text="⚠  Terms of Use & Risk Disclaimer",
-            font=("Inter", 16, "bold"),
-            text_color=YELLOW,
-        ).pack(side="left", padx=20, pady=14)
+        ctk.CTkLabel(self, text="Scroll to the bottom to enable the agreement checkbox.",
+                     font=FONT_SMALL, text_color=TEXT_SECONDARY).pack(pady=(8, 4))
 
-        ctk.CTkLabel(
-            header,
-            text="Best Brand Corp",
-            font=FONT_SMALL,
-            text_color=TEXT_SECONDARY,
-        ).pack(side="right", padx=20)
-
-        # Subtitle warning
-        ctk.CTkLabel(
-            self,
-            text="Scroll to the bottom, read all terms, then check the box to continue.",
-            font=FONT_SMALL,
-            text_color=TEXT_SECONDARY,
-        ).pack(pady=(10, 4))
-
-        # Text area
+        # Textbox
         self.textbox = ctk.CTkTextbox(
-            self,
-            fg_color=BG_INPUT,
-            text_color=TEXT_PRIMARY,
-            font=("Courier New", 11),
-            corner_radius=CORNER_RADIUS,
-            border_width=1,
-            border_color=BORDER,
-            wrap="word",
-            state="normal",
+            self, fg_color=BG_INPUT, text_color=TEXT_PRIMARY,
+            font=("Courier New", 11), corner_radius=CORNER_RADIUS,
+            border_width=1, border_color=BORDER, wrap="word", state="normal",
         )
-        self.textbox.pack(fill="both", expand=True, padx=20, pady=(0, 8))
+        self.textbox.pack(fill="both", expand=True, padx=20, pady=(0, 6))
         self.textbox.insert("1.0", TERMS_TEXT)
         self.textbox.configure(state="disabled")
 
-        # Detect scroll-to-bottom
-        self.textbox._textbox.bind("<KeyRelease>", self._on_scroll)
-        self.textbox._textbox.bind("<ButtonRelease>", self._on_scroll)
-        self.textbox._textbox.bind("<MouseWheel>", self._on_scroll)
-        self.textbox._textbox.bind("<Button-4>", self._on_scroll)  # Linux scroll up
-        self.textbox._textbox.bind("<Button-5>", self._on_scroll)  # Linux scroll down
+        # Scroll detection
+        for event in ("<KeyRelease>", "<ButtonRelease>", "<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.textbox._textbox.bind(event, self._on_scroll)
 
-        # Scroll hint label
-        self.scroll_hint = ctk.CTkLabel(
-            self,
-            text="↓  Scroll down to read all terms before you can agree",
-            font=FONT_SMALL,
-            text_color=YELLOW,
-        )
+        self.scroll_hint = ctk.CTkLabel(self, text="↓  Scroll to read all terms",
+                                         font=FONT_SMALL, text_color=YELLOW)
         self.scroll_hint.pack(pady=(0, 4))
 
-        # Checkbox row
+        # Agreement checkbox
         self.agree_var = ctk.BooleanVar(value=False)
         self.checkbox = ctk.CTkCheckBox(
             self,
             text=(
-                "I have read, understood, and agree to all Terms of Use and Risk Disclosures.\n"
-                "I accept full responsibility for all trading decisions and financial losses."
+                "I have read, understood, and agree to all Terms of Use, Risk Disclosures,\n"
+                "and the 0.02% platform fee on every trade. I accept full responsibility."
             ),
             variable=self.agree_var,
-            checkbox_width=20,
-            checkbox_height=20,
-            checkmark_color=BG_DARK,
-            fg_color=GREEN,
-            border_color=BORDER,
-            text_color=TEXT_PRIMARY,
-            font=FONT_SMALL,
-            state="disabled",   # enabled after scroll-to-bottom
+            checkbox_width=20, checkbox_height=20,
+            checkmark_color=BG_DARK, fg_color=GREEN,
+            border_color=BORDER, text_color=TEXT_PRIMARY,
+            font=FONT_SMALL, state="disabled",
             command=self._on_checkbox,
         )
         self.checkbox.pack(padx=20, pady=(4, 8), anchor="w")
@@ -335,23 +484,14 @@ class TermsDialog(ctk.CTkToplevel):
         btn_row = ctk.CTkFrame(self, fg_color="transparent")
         btn_row.pack(fill="x", padx=20, pady=(0, 16))
 
-        ctk.CTkButton(
-            btn_row,
-            text="✕  Decline & Exit",
-            fg_color=BG_INPUT,
-            text_color=RED,
-            hover_color=BORDER,
-            font=FONT_BODY,
-            command=self._on_close,
-        ).pack(side="left")
+        ctk.CTkButton(btn_row, text="✕  Decline & Exit", fg_color=BG_INPUT,
+                      text_color=RED, hover_color=BORDER, font=FONT_BODY,
+                      command=self._on_close).pack(side="left")
 
         self.agree_btn = ctk.CTkButton(
-            btn_row,
-            text="✓  I Agree & Continue",
-            fg_color=BORDER,           # greyed out until checked
-            text_color=TEXT_MUTED,
-            font=("Inter", 13, "bold"),
-            state="disabled",
+            btn_row, text="✓  I Agree & Continue",
+            fg_color=BORDER, text_color=TEXT_MUTED,
+            font=("Inter", 13, "bold"), state="disabled",
             command=self._on_agree,
         )
         self.agree_btn.pack(side="right")
@@ -360,13 +500,12 @@ class TermsDialog(ctk.CTkToplevel):
         if self._scrolled_to_bottom:
             return
         try:
-            # yview returns (top_fraction, bottom_fraction)
             _, bottom = self.textbox._textbox.yview()
-            if bottom >= 0.98:
+            if bottom >= 0.97:
                 self._scrolled_to_bottom = True
                 self.checkbox.configure(state="normal")
                 self.scroll_hint.configure(
-                    text="✓  You've reached the bottom. Check the box below to continue.",
+                    text="✓  Reached the bottom — check the box to agree.",
                     text_color=GREEN,
                 )
         except Exception:
@@ -374,19 +513,16 @@ class TermsDialog(ctk.CTkToplevel):
 
     def _on_checkbox(self):
         if self.agree_var.get():
-            self.agree_btn.configure(
-                state="normal",
-                fg_color=GREEN,
-                text_color="black",
-            )
+            self.agree_btn.configure(state="normal", fg_color=GREEN, text_color="black")
         else:
-            self.agree_btn.configure(
-                state="disabled",
-                fg_color=BORDER,
-                text_color=TEXT_MUTED,
-            )
+            self.agree_btn.configure(state="disabled", fg_color=BORDER, text_color=TEXT_MUTED)
 
     def _on_agree(self):
+        from registry import record_acceptance
+        try:
+            record_acceptance(age_verified=True)
+        except Exception:
+            pass
         self.accepted = True
         self.grab_release()
         self.destroy()
@@ -395,3 +531,35 @@ class TermsDialog(ctk.CTkToplevel):
         self.accepted = False
         self.grab_release()
         self.destroy()
+
+
+# ── Orchestrator ──────────────────────────────────────────────────────────────
+
+def run_onboarding(parent) -> bool:
+    """
+    Run the full onboarding flow (age check → T&C).
+    Returns True if the user completed both steps, False otherwise.
+
+    Skips both dialogs if this device has already accepted.
+    """
+    from registry import (
+        get_or_create_install_id,
+        is_terms_accepted,
+    )
+
+    install_id = get_or_create_install_id()
+
+    # Skip if already accepted on this device
+    if is_terms_accepted():
+        return True
+
+    # ── Step 1: Age verification ─────────────────────────────────────────────
+    age_dlg = AgeVerificationDialog(parent, install_id)
+    parent.wait_window(age_dlg)
+    if not age_dlg.verified:
+        return False
+
+    # ── Step 2: Terms & Conditions ────────────────────────────────────────────
+    terms_dlg = TermsDialog(parent, install_id)
+    parent.wait_window(terms_dlg)
+    return terms_dlg.accepted

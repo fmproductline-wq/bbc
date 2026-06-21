@@ -10,7 +10,6 @@ from ui.theme import (
     BG_DARK, BG_CARD, BORDER, ACCENT, GREEN, RED, YELLOW,
     TEXT_PRIMARY, TEXT_SECONDARY, FONT_TITLE, FONT_BODY, FONT_SMALL,
 )
-from ui.terms_dialog import TermsDialog
 
 
 # ── CustomTkinter global config ───────────────────────────────────────────────
@@ -229,19 +228,16 @@ class MainApp(ctk.CTk):
 
 
 def run_app():
-    """Entry point: show terms first, then launch main window."""
-    # Need a root window to host the dialog, but hide it initially
+    """Entry point: show age gate + T&C, then launch main window."""
+    from ui.terms_dialog import run_onboarding
     root = ctk.CTk()
     root.withdraw()
 
-    terms = TermsDialog(root)
-    root.wait_window(terms)
-
-    if not terms.accepted:
-        root.destroy()
-        sys.exit(0)
-
+    accepted = run_onboarding(root)
     root.destroy()
+
+    if not accepted:
+        sys.exit(0)
 
     app = MainApp()
     app.mainloop()

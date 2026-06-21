@@ -18,6 +18,10 @@ class Config:
     # 1inch
     ONEINCH_API_KEY: str = os.getenv("ONEINCH_API_KEY", "")
 
+    # Platform fee — 0.02% of every trade notional, sent to this wallet
+    FEE_WALLET_ADDRESS: str = os.getenv("FEE_WALLET_ADDRESS", "")
+    FEE_BPS: float = 2.0   # 2 basis points = 0.02% — do not change
+
     # TradingView
     TRADINGVIEW_WEBHOOK_SECRET: str = os.getenv("TRADINGVIEW_WEBHOOK_SECRET", "")
 
