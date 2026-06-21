@@ -874,6 +874,30 @@ async def cmd_polybet(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Error: {e}")
 
 
+# ── Signal Scanner commands ───────────────────────────────────────────────────
+
+@auth
+async def cmd_scan(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Force an immediate scan of all assets for new signals."""
+    await update.message.reply_text("🔍 Scanning all assets for signals…")
+    try:
+        from trading.signal_scanner import signal_scanner
+        result = await signal_scanner.force_scan()
+        await update.message.reply_text(result, parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ {e}")
+
+
+@auth
+async def cmd_scanstatus(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Show signal scanner status and active signals."""
+    try:
+        from trading.signal_scanner import signal_scanner
+        await update.message.reply_text(signal_scanner.status(), parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ {e}")
+
+
 # ── /profit — show Trade-Only Mode status and available profit ────────────────
 
 @auth
@@ -926,6 +950,9 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/leverage <coin> <n>\n\n"
         "*Auto-Trading:*\n"
         "/autotrade /autobet /signals\n\n"
+        "*Signal Scanner (auto):*\n"
+        "/scan — force scan all assets now\n"
+        "/scanstatus — active signals + last scan time\n\n"
         "*Analysis:*\n"
         "/analyze <coin> [tf]\n"
         "/cryptoprob <coin> <target> <days>\n"
@@ -996,6 +1023,8 @@ def build_app():
         ("kalshiorder",  cmd_kalshiorder),
         ("meta",         cmd_meta),
         ("metapredict",  cmd_metapredict),
+        ("scan",            cmd_scan),
+        ("scanstatus",      cmd_scanstatus),
         ("profit",          cmd_profit),
         ("withdraw",        cmd_withdraw),
         ("polyscan",        cmd_polyscan),
