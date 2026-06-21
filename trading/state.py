@@ -18,6 +18,10 @@ class Position:
     closed: bool = False
     close_tx: Optional[str] = None
     pnl: Optional[float] = None
+    take_profit_1: Optional[float] = None
+    take_profit_2: Optional[float] = None
+    size: float = 0.0
+    trade_history_id: Optional[int] = None   # FK into trade_history DB
 
 
 class BotState:

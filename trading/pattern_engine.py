@@ -281,9 +281,22 @@ def evaluate_current(df: pd.DataFrame, atr_multiplier_sl: float = 1.5,
         tp2 = entry - atr_val * atr_multiplier_tp * 1.8
         action = "SHORT"
 
+    # ── #3: Blend in personal trade history if available ──────────────────────
+    personal_win_rate = s.win_rate
+    try:
+        from trading.trade_history import get_personal_stats_by_label
+        personal = get_personal_stats_by_label()
+        if label in personal and personal[label]["total"] >= 3:
+            p = personal[label]
+            p_wr = p["wins"] / p["total"]
+            # Weighted blend: 70% historical, 30% personal (personal has fewer samples)
+            personal_win_rate = 0.7 * s.win_rate + 0.3 * p_wr
+    except Exception:
+        pass
+
     # Confidence: blend win rate + EV + sample size (capped at 95)
     sample_weight = min(s.count / 30, 1.0)        # more samples = more confidence
-    raw = (s.win_rate * 60) + (min(s.expectancy, 3.0) / 3.0 * 25) + (sample_weight * 15)
+    raw = (personal_win_rate * 60) + (min(s.expectancy, 3.0) / 3.0 * 25) + (sample_weight * 15)
     confidence = min(round(raw, 1), 95.0)
 
     # Label strength description
@@ -315,7 +328,7 @@ def evaluate_current(df: pd.DataFrame, atr_multiplier_sl: float = 1.5,
     )
 
 
-def full_report(coin: str, timeframe: str = "1h", limit: int = 300) -> tuple[SignalVerdict, dict[str, PatternStats]]:
+def full_report(coin: str, timeframe: str = "1h", limit: int = 1000) -> tuple[SignalVerdict, dict[str, PatternStats]]:
     """
     Fetch candles, run the pattern engine, return (verdict, all_stats).
     limit should be large (300+) to get meaningful backtest stats.

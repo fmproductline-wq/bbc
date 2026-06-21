@@ -336,6 +336,19 @@ async def manual_close(coin: str) -> str:
                 pnl_usd = p.amount_in * ((close_price - p.entry_price) / p.entry_price)
                 guard.record_trade_pnl(pnl_usd, f"{coin} manual close @ ~${close_price:,.4f}")
                 p.closed = True
+                # Record close in trade history DB (#3)
+                if getattr(p, "trade_history_id", None):
+                    try:
+                        from trading.trade_history import record_close
+                        record_close(p.trade_history_id, close_price, pnl_usd)
+                    except Exception:
+                        pass
+                # Reset trailing stop tracker (#10)
+                try:
+                    from trading.trailing_stop import trailing_stop_monitor
+                    trailing_stop_monitor.reset_ticker(coin)
+                except Exception:
+                    pass
         profit_avail = guard.ledger.available_profit()
         return (
             f"✅ *CLOSED* {coin} @ ~${price:,.4f}\n"

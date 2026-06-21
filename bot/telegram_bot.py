@@ -979,6 +979,64 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ── /health — Hyperliquid API health status ───────────────────────────────────
+
+@auth
+async def cmd_health(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Show Hyperliquid API health monitor status."""
+    try:
+        from trading.health_monitor import health_monitor
+        await update.message.reply_text(health_monitor.status(), parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ {e}")
+
+
+# ── /history [limit] — personal trade history ─────────────────────────────────
+
+@auth
+async def cmd_history(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Show recent closed trades from personal trade history DB."""
+    limit = 10
+    if ctx.args:
+        try:
+            limit = int(ctx.args[0])
+        except ValueError:
+            pass
+
+    try:
+        from trading.trade_history import get_closed_trades, get_summary
+        trades  = get_closed_trades(limit=limit)
+        summary = get_summary()
+
+        if not trades:
+            await update.message.reply_text("No closed trades recorded yet.")
+            return
+
+        closed = summary.get("closed") or 0
+        wins   = summary.get("wins") or 0
+        pnl    = summary.get("total_pnl_usd") or 0.0
+        wr     = (wins / closed * 100) if closed else 0
+
+        lines = [
+            f"📊 *Trade History* (last {len(trades)} of {closed} closed)",
+            f"Win rate: `{wr:.0f}%`  |  Total PnL: `${pnl:+,.2f}`",
+            "",
+        ]
+        for t in trades:
+            from datetime import datetime
+            ts = datetime.fromtimestamp(t["closed_at"]).strftime("%m/%d %H:%M") if t.get("closed_at") else "?"
+            pct = t.get("pnl_pct") or 0.0
+            icon = "✅" if t.get("outcome") == "win" else "❌" if t.get("outcome") == "loss" else "➖"
+            lines.append(
+                f"{icon} `{ts}` {t['action']} {t['ticker']}  "
+                f"`{t.get('signal_label','')}`  PnL: `{pct:+.2f}%`"
+            )
+
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ {e}")
+
+
 # ── App builder ───────────────────────────────────────────────────────────────
 
 def build_app():
@@ -1025,6 +1083,8 @@ def build_app():
         ("metapredict",  cmd_metapredict),
         ("scan",            cmd_scan),
         ("scanstatus",      cmd_scanstatus),
+        ("health",          cmd_health),
+        ("history",         cmd_history),
         ("profit",          cmd_profit),
         ("withdraw",        cmd_withdraw),
         ("polyscan",        cmd_polyscan),

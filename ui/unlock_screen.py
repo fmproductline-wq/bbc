@@ -218,7 +218,7 @@ class UnlockScreen(ctk.CTkToplevel):
                 try:
                     save_key(private_key, password)
                     pk = load_key(password)
-                    self.after(0, self._success, pk)
+                    self.after(0, self._success, pk, password)
                 except ValueError as e:
                     self.after(0, self._set_status, f"Invalid key: {e}")
                 except Exception as e:
@@ -231,10 +231,12 @@ class UnlockScreen(ctk.CTkToplevel):
             self._set_status("Decrypting…", color=TEXT_MUTED)
             self.update()
 
+            _pw_copy = password
+
             def _do():
                 try:
-                    pk = load_key(password)
-                    self.after(0, self._success, pk)
+                    pk = load_key(_pw_copy)
+                    self.after(0, self._success, pk, _pw_copy)
                 except InvalidPassword:
                     self.after(0, self._set_status, "Wrong password. Try again.")
                 except FileNotFoundError:
@@ -244,9 +246,9 @@ class UnlockScreen(ctk.CTkToplevel):
 
             threading.Thread(target=_do, daemon=True).start()
 
-    def _success(self, private_key: str):
+    def _success(self, private_key: str, password: str = ""):
         self._set_status("✓ Unlocked", color=GREEN)
-        self.after(300, lambda: (self.destroy(), self._on_success(private_key)))
+        self.after(300, lambda: (self.destroy(), self._on_success(private_key, password)))
 
     def _cancel(self):
         self.destroy()
@@ -338,3 +340,53 @@ class ChangePasswordDialog(ctk.CTkToplevel):
                            {"text": f"Error: {e}", "text_color": RED})
 
         threading.Thread(target=_do, daemon=True).start()
+
+
+# ── Simple password prompt (used for vault operations) ────────────────────────
+
+class PasswordPromptDialog(ctk.CTkToplevel):
+    """Minimal single-field password prompt. Calls on_submit(password) on confirm."""
+
+    def __init__(self, master, on_submit, title: str = "Enter Password"):
+        super().__init__(master)
+        self.title(title)
+        self.geometry("360x200")
+        self.resizable(False, False)
+        self.configure(fg_color=BG_DARK)
+        self.grab_set()
+        self._on_submit = on_submit
+
+        ctk.CTkFrame(self, height=3, fg_color=ACCENT, corner_radius=0).pack(fill="x")
+        ctk.CTkLabel(self, text=title, font=("Inter", 13, "bold"),
+                     text_color=TEXT_PRIMARY, wraplength=320).pack(pady=(16, 8), padx=20)
+
+        card = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=8,
+                             border_width=1, border_color=BORDER)
+        card.pack(fill="x", padx=24, pady=4)
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.pack(fill="x", padx=16, pady=12)
+
+        self._pw = ctk.CTkEntry(inner, show="•", fg_color=BG_INPUT, border_color=BORDER,
+                                 text_color=TEXT_PRIMARY, font=FONT_BODY,
+                                 placeholder_text="Vault password…")
+        self._pw.pack(fill="x")
+        self._pw.bind("<Return>", lambda e: self._submit())
+        self._pw.focus()
+
+        btn_row = ctk.CTkFrame(inner, fg_color="transparent")
+        btn_row.pack(fill="x", pady=(10, 0))
+        btn_row.columnconfigure(0, weight=1)
+        btn_row.columnconfigure(1, weight=1)
+        ctk.CTkButton(btn_row, text="Confirm", fg_color=ACCENT, text_color=BG_DARK,
+                      font=("Inter", 12, "bold"), command=self._submit).grid(
+            row=0, column=0, padx=(0, 4), sticky="ew")
+        ctk.CTkButton(btn_row, text="Cancel", fg_color="transparent", text_color=TEXT_MUTED,
+                      hover_color=BG_INPUT, border_width=1, border_color=BORDER,
+                      command=self.destroy).grid(row=0, column=1, padx=(4, 0), sticky="ew")
+
+    def _submit(self):
+        pw = self._pw.get()
+        if not pw:
+            return
+        self.destroy()
+        self._on_submit(pw)

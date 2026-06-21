@@ -95,6 +95,8 @@ class MainApp(ctk.CTk):
             ("Trading",      "📈"),
             ("Analysis",     "🔭"),
             ("Predictions",  "🎰"),
+            ("PnL",          "💰"),
+            ("Backtest",     "📊"),
             ("Bug Checker",  "🔍"),
             ("Settings",     "⚙️"),
         ]
@@ -175,18 +177,22 @@ class MainApp(ctk.CTk):
     # ── Tab init ──────────────────────────────────────────────────────────────
 
     def _init_tabs(self):
-        from ui.tabs.dashboard        import DashboardTab
-        from ui.tabs.trading          import TradingTab
-        from ui.tabs.analysis         import AnalysisTab
+        from ui.tabs.dashboard          import DashboardTab
+        from ui.tabs.trading            import TradingTab
+        from ui.tabs.analysis           import AnalysisTab
         from ui.tabs.prediction_markets import PredictionMarketsTab
-        from ui.tabs.bug_checker      import BugCheckerTab
-        from ui.tabs.settings         import SettingsTab
+        from ui.tabs.pnl_dashboard      import PnLDashboardTab
+        from ui.tabs.backtest           import BacktestTab
+        from ui.tabs.bug_checker        import BugCheckerTab
+        from ui.tabs.settings           import SettingsTab
 
         tab_classes = {
             "Dashboard":   DashboardTab,
             "Trading":     TradingTab,
             "Analysis":    AnalysisTab,
             "Predictions": PredictionMarketsTab,
+            "PnL":         PnLDashboardTab,
+            "Backtest":    BacktestTab,
             "Bug Checker": BugCheckerTab,
             "Settings":    SettingsTab,
         }
@@ -297,8 +303,9 @@ def run_app():
     unlock_root = ctk.CTk()
     unlock_root.withdraw()
 
-    def _on_success(private_key: str):
+    def _on_success(private_key: str, password: str = ""):
         _result["key"] = private_key
+        _result["password"] = password
         unlock_root.quit()
 
     def _on_cancel():
@@ -312,12 +319,25 @@ def run_app():
     if "key" not in _result:
         sys.exit(0)
 
-    # ── Step 3: inject decrypted key into config (memory only) ───────────────
+    # ── Step 3: inject decrypted key + all vault secrets into config ─────────
     import os
     os.environ["WALLET_PRIVATE_KEY"] = _result["key"]
     try:
         from config import cfg
         cfg.WALLET_PRIVATE_KEY = _result["key"]
+    except Exception:
+        pass
+
+    # Inject additional encrypted secrets (Telegram token, API keys, etc.)
+    try:
+        from security.secret_vault import inject_secrets_to_env
+        inject_secrets_to_env(_result.get("password", ""))
+        # Reload config so injected env vars take effect
+        from importlib import reload
+        import config as _cfg_mod
+        reload(_cfg_mod)
+        from config import cfg as _cfg
+        cfg.__dict__.update(_cfg.__dict__)
     except Exception:
         pass
 

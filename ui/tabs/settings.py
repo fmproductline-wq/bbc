@@ -54,10 +54,13 @@ class SettingsTab(ctk.CTkFrame):
             ("METACULUS_TOKEN", "API Token", True),
         ],
         "Risk Management": [
-            ("MAX_TRADE_PCT",  "Max Trade % of Account", False),
-            ("MAX_BET_PCT",    "Max Bet % of Account", False),
-            ("SLIPPAGE_PCT",   "Slippage %", False),
-            ("STOP_LOSS_PCT",  "Stop Loss %", False),
+            ("MAX_TRADE_PCT",       "Max Trade % of Account", False),
+            ("MAX_BET_PCT",         "Max Bet % of Account", False),
+            ("SLIPPAGE_PCT",        "Slippage %", False),
+            ("STOP_LOSS_PCT",       "Stop Loss %", False),
+            ("RISK_PCT_PER_TRADE",  "Risk % per Trade (ATR sizing)", False),
+            ("MTF_CONFIRMATION",    "Multi-TF Confirmation (true/false)", False),
+            ("TRAILING_STOP",       "Trailing Stop to Breakeven (true/false)", False),
         ],
     }
 
@@ -76,6 +79,9 @@ class SettingsTab(ctk.CTkFrame):
         ctk.CTkButton(top_bar, text="🔑  Change Password", fg_color=BG_INPUT,
                       text_color=ACCENT, hover_color=BORDER,
                       command=self._change_password).pack(side="right", padx=8)
+        ctk.CTkButton(top_bar, text="🔒  Migrate to Vault", fg_color=BG_INPUT,
+                      text_color=ACCENT, hover_color=BORDER,
+                      command=self._migrate_to_vault).pack(side="right", padx=8)
 
         scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
         scroll.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=PAD, pady=PAD)
@@ -135,6 +141,24 @@ class SettingsTab(ctk.CTkFrame):
     def _change_password(self):
         from ui.unlock_screen import ChangePasswordDialog
         ChangePasswordDialog(self)
+
+    def _migrate_to_vault(self):
+        """Move sensitive .env secrets into the encrypted secrets vault."""
+        from ui.unlock_screen import PasswordPromptDialog
+        def _on_pw(password: str):
+            try:
+                from security.secret_vault import migrate_env_to_vault
+                migrated = migrate_env_to_vault(ENV_PATH, password)
+                if migrated:
+                    self.log.append(f"✓ Migrated {len(migrated)} secrets to encrypted vault:", "SUCCESS")
+                    for k in migrated:
+                        self.log.append(f"  • {k}", "INFO")
+                    self.log.append("These keys are now stored encrypted. You can remove them from .env.", "WARNING")
+                else:
+                    self.log.append("No recognised secrets found in .env to migrate.", "INFO")
+            except Exception as e:
+                self.log.append(f"Migration failed: {e}", "ERROR")
+        PasswordPromptDialog(self, on_submit=_on_pw, title="Enter vault password to migrate secrets")
 
     def _load_registration(self):
         try:

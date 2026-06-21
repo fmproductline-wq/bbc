@@ -8,6 +8,7 @@ All data returned as a DataFrame with columns:
   timestamp, open, high, low, close, volume
 """
 from __future__ import annotations
+import time
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, timezone
@@ -70,8 +71,30 @@ _YF_PERIODS: dict[str, int] = {
 }
 
 
+_hl_dynamic_cache: set[str] = set()
+_hl_cache_ts: float = 0.0
+
+
+def _refresh_hl_tickers():
+    """Check Hyperliquid live mids to detect newly listed tickers (#4)."""
+    global _hl_dynamic_cache, _hl_cache_ts
+    if time.time() - _hl_cache_ts < 3600:
+        return
+    try:
+        from trading.hyperliquid import get_all_mids
+        mids = get_all_mids()
+        _hl_dynamic_cache = set(mids.keys())
+        _hl_cache_ts = time.time()
+    except Exception:
+        pass
+
+
 def is_crypto(ticker: str) -> bool:
-    return ticker.upper() in _HL_TICKERS
+    t = ticker.upper()
+    if t in _HL_TICKERS:
+        return True
+    _refresh_hl_tickers()
+    return t in _hl_dynamic_cache
 
 
 def fetch_candles(ticker: str, timeframe: str = "1h", limit: int = 120) -> pd.DataFrame:

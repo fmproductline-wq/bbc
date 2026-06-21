@@ -55,6 +55,12 @@ class Config:
     MAX_BET_PCT: float = float(os.getenv("MAX_BET_PCT", "2"))
     SLIPPAGE_PCT: float = float(os.getenv("SLIPPAGE_PCT", "1"))
     STOP_LOSS_PCT: float = float(os.getenv("STOP_LOSS_PCT", "3"))
+    # Risk-based position sizing: % of account to risk per trade (used with ATR stop distance)
+    RISK_PCT_PER_TRADE: float = float(os.getenv("RISK_PCT_PER_TRADE", "1.0"))
+    # Multi-timeframe: require 4h to agree with 1h before firing signal
+    MTF_CONFIRMATION: bool = os.getenv("MTF_CONFIRMATION", "true").lower() == "true"
+    # Trailing stop: move SL to breakeven after TP1 hit
+    TRAILING_STOP: bool = os.getenv("TRAILING_STOP", "true").lower() == "true"
 
     CHAIN_IDS = {
         "ethereum": 1,

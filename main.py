@@ -23,6 +23,8 @@ from bot.telegram_bot import build_app as build_telegram
 from predictions import kalshi as kalshi_client
 from predictions.polymarket_research_bot import poly_research_bot
 from trading.signal_scanner import signal_scanner
+from trading.health_monitor import health_monitor
+from trading.trailing_stop import trailing_stop_monitor
 from payments.stripe_checkout import (
     create_checkout_session, verify_session,
     issue_download_token, consume_token,
@@ -328,6 +330,16 @@ async def startup():
     asyncio.create_task(signal_scanner.start())
     logger.info(f"Signal Scanner started — watching {len(signal_scanner._states)} assets")
 
+    # Start Health Monitor — pings Hyperliquid API, alerts on failure (#2)
+    health_monitor.set_notifier(_notify_scanner)
+    asyncio.create_task(health_monitor.start())
+    logger.info("Health monitor started")
+
+    # Start Trailing Stop Monitor — moves SL to breakeven after TP1 (#10)
+    trailing_stop_monitor.set_notifier(_notify_scanner)
+    asyncio.create_task(trailing_stop_monitor.start())
+    logger.info("Trailing stop monitor started")
+
     # Run an immediate startup bug check
     asyncio.create_task(scheduled_bug_check())
 
@@ -338,6 +350,8 @@ async def shutdown():
     scheduler.shutdown(wait=False)
     poly_research_bot.stop()
     signal_scanner.stop()
+    health_monitor.stop()
+    trailing_stop_monitor.stop()
     if _tg_app:
         await _tg_app.stop()
         await _tg_app.shutdown()
