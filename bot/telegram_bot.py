@@ -35,6 +35,7 @@ from trading.state import state
 from trading import hyperliquid as hl
 from trading.approval import approval_queue, PendingRequest
 from trading.restrictions import guard
+from predictions.polymarket_research_bot import poly_research_bot
 from predictions import polymarket, kalshi, metaculus
 from analysis import market_analyzer as ma
 from analysis import probability as prob
@@ -167,6 +168,17 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("Send: /analyze <coin> [tf]  e.g. /analyze BTC 1h")
     elif data == "prob_prompt":
         await query.message.reply_text("Send: /prob <mkt_price> <our_est> [YES|NO] [platform]")
+    elif data == "bestbets":
+        picks = poly_research_bot.get_top_picks(3)
+        if not picks:
+            await query.message.reply_text("No picks yet. Use /polyscan to scan now.")
+        else:
+            for r in picks:
+                await query.message.reply_text(r.to_telegram(), parse_mode="Markdown")
+    elif data == "polyscan":
+        await query.message.reply_text("🔬 Scanning Polymarket…")
+        result = await poly_research_bot.force_scan()
+        await query.message.reply_text(result, parse_mode="Markdown")
     elif data in ("poly_search", "kalshi_search", "meta_search"):
         platform = {"poly_search": "poly", "kalshi_search": "kalshi", "meta_search": "meta"}[data]
         await query.message.reply_text(f"Send: /{platform} <keyword>")
@@ -200,6 +212,8 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("📜 Signals",       callback_data="signals")],
         [InlineKeyboardButton("📈 Analyze",       callback_data="analyze_prompt"),
          InlineKeyboardButton("🔍 Bug Check",     callback_data="bugcheck")],
+        [InlineKeyboardButton("🔬 Best Bets",      callback_data="bestbets"),
+         InlineKeyboardButton("🔄 Scan Now",      callback_data="polyscan")],
         [InlineKeyboardButton("🔮 Polymarket",    callback_data="poly_search"),
          InlineKeyboardButton("📊 Kalshi",        callback_data="kalshi_search")],
         [InlineKeyboardButton("🧠 Metaculus",     callback_data="meta_search"),
@@ -642,6 +656,187 @@ async def cmd_metapredict(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     asyncio.create_task(_do())
 
 
+# ── Polymarket Research Bot commands ─────────────────────────────────────────
+
+@auth
+async def cmd_polyscan(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Trigger an immediate Polymarket research scan."""
+    await update.message.reply_text("🔬 Running Polymarket research scan…")
+    result = await poly_research_bot.force_scan()
+    await update.message.reply_text(result, parse_mode="Markdown")
+
+
+@auth
+async def cmd_bestbets(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Show top Polymarket opportunities from last scan."""
+    picks = poly_research_bot.get_top_picks(limit=5)
+    if not picks:
+        await update.message.reply_text(
+            "No opportunities above threshold right now.\n"
+            "Use /polyscan to run a fresh scan."
+        )
+        return
+    await update.message.reply_text(
+        f"🏆 *Top {len(picks)} Polymarket Opportunities*\n"
+        f"_(from last scan — use /polyscan to refresh)_",
+        parse_mode="Markdown",
+    )
+    for r in picks:
+        await update.message.reply_text(r.to_telegram(), parse_mode="Markdown")
+
+
+@auth
+async def cmd_polyresearch(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Deep-dive research on a specific Polymarket market ID."""
+    if not ctx.args:
+        await update.message.reply_text(
+            "Usage: /polyresearch <market_id>\n"
+            "Get market IDs from /poly <keyword> or /bestbets"
+        )
+        return
+    market_id = ctx.args[0]
+    report = poly_research_bot.research_by_id(market_id)
+    if report:
+        await update.message.reply_text(report.to_telegram(), parse_mode="Markdown")
+        return
+    # Not in cache — fetch and research directly
+    await update.message.reply_text("⏳ Fetching and researching market…")
+    try:
+        from predictions.polymarket_research_bot import fetch_live_markets, _research_market, LiveMarket
+        import requests as _req
+        resp = _req.get(
+            f"https://gamma-api.polymarket.com/markets/{market_id}", timeout=10
+        )
+        resp.raise_for_status()
+        m_raw = resp.json()
+        prices = m_raw.get("outcomePrices") or ["0.5", "0.5"]
+        tokens = m_raw.get("clobTokenIds") or ["", ""]
+        vol    = float(m_raw.get("volume") or 0)
+        from predictions.polymarket_research_bot import _days_until, LiveMarket, _research_market
+        lm = LiveMarket(
+            id=market_id,
+            question=m_raw.get("question", "?"),
+            yes_token_id=tokens[0] if tokens else "",
+            no_token_id=tokens[1] if len(tokens) > 1 else "",
+            yes_price=float(prices[0]),
+            no_price=float(prices[1]) if len(prices) > 1 else 1 - float(prices[0]),
+            volume_usd=vol,
+            end_date=m_raw.get("endDate", ""),
+            days_to_close=_days_until(m_raw.get("endDate", "")),
+        )
+        report = _research_market(lm)
+        await update.message.reply_text(report.to_telegram(), parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
+
+@auth
+async def cmd_polybotstatus(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Show Polymarket Research Bot status and stats."""
+    await update.message.reply_text(
+        poly_research_bot.scan_summary(), parse_mode="Markdown"
+    )
+
+
+@auth
+async def cmd_polybet(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """
+    Research a market then immediately request approval to bet on it.
+    Usage: /polybet <token_id> <YES|NO> <size_usdc>
+    The bot auto-calculates the price from current market + Kelly sizing.
+    """
+    if not ctx.args or len(ctx.args) < 3:
+        await update.message.reply_text(
+            "Usage: /polybet <token_id> <YES|NO> <size_usdc>\n"
+            "Example: /polybet abc123 YES 25\n\n"
+            "Get token IDs from /bestbets or /poly <keyword>"
+        )
+        return
+
+    token_id = ctx.args[0]
+    side     = ctx.args[1].upper()
+    size     = float(ctx.args[2])
+
+    if side not in ("YES", "NO"):
+        await update.message.reply_text("Side must be YES or NO")
+        return
+
+    await update.message.reply_text(f"🔬 Researching market before placing bet…")
+
+    try:
+        # Pull current price from orderbook
+        import requests as _req
+        book_resp = _req.get(
+            f"https://clob.polymarket.com/book",
+            params={"token_id": token_id},
+            timeout=10,
+        )
+        book = book_resp.json() if book_resp.ok else {}
+        bids = book.get("bids", [])
+        asks = book.get("asks", [])
+        if asks:
+            price = float(asks[0]["price"])
+        elif bids:
+            price = float(bids[0]["price"])
+        else:
+            price = 0.5
+
+        # Find or build research report
+        report = poly_research_bot.research_by_id(token_id)
+        research_note = ""
+        if report:
+            research_note = (
+                f"\n\n🔬 *Research Summary*\n"
+                f"Our est: `{report.our_yes_prob*100:.1f}%` YES\n"
+                f"Edge: `{report.edge_pct:+.1f}%` | Score: `{report.score:.0f}/100`\n"
+                f"Confidence: `{report.confidence}`\n"
+                f"Recommended: `{report.recommended_side}`"
+            )
+            if report.recommended_side != side:
+                research_note += f"\n⚠️ _Bot recommends {report.recommended_side}, you chose {side}_"
+
+        from trading.executor import request_bet_approval
+        from predictions.polymarket import place_order
+
+        question = report.market.question if report else f"Token {token_id[:12]}…"
+
+        async def execute():
+            from predictions import polymarket
+            result = polymarket.place_order(token_id, "BUY", price, size)
+            oid = result.get("orderID") or "?"
+            return (
+                f"✅ *Polymarket Bet Placed*\n"
+                f"{side} on _{question}_\n"
+                f"Price: `{price:.3f}` | Size: `${size}`\n"
+                f"Order ID: `{oid}`"
+            )
+
+        detail = (
+            f"🎰 *POLYMARKET BET — {side}*\n"
+            f"_{question}_\n\n"
+            f"Token: `{token_id[:16]}…`\n"
+            f"Price: `{price:.3f}` ({price*100:.1f}%)\n"
+            f"Size:  `${size:.2f} USDC`"
+            f"{research_note}"
+        )
+
+        async def _do():
+            result = await request_bet_approval(
+                "polymarket", token_id, question, side, price, size, execute
+            )
+            await _bot_app.bot.send_message(
+                cfg.TELEGRAM_ALLOWED_USER_ID, result, parse_mode="Markdown"
+            )
+        asyncio.create_task(_do())
+        await update.message.reply_text(
+            f"⏳ Research complete. Approval request sent.{research_note}",
+            parse_mode="Markdown",
+        )
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
+
 # ── /profit — show Trade-Only Mode status and available profit ────────────────
 
 @auth
@@ -703,7 +898,13 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/withdraw <amount> <wallet> — withdraw profits only\n\n"
         "*Bug Checker:*\n"
         "/bugcheck /bugfix\n\n"
-        "*Prediction Markets:*\n"
+        "*🔬 Polymarket Research Bot:*\n"
+        "/polyscan — scan all live markets now\n"
+        "/bestbets — show top scored opportunities\n"
+        "/polyresearch <id> — deep research on one market\n"
+        "/polybotstatus — bot scan stats\n"
+        "/polybet <token_id> <YES|NO> <size> — research + bet\n\n"
+        "*Prediction Markets (manual):*\n"
         "/poly <query>\n"
         "/polybuy <id> <YES|NO> <price> <size>\n"
         "/kalshi <query>\n"
@@ -758,8 +959,13 @@ def build_app():
         ("kalshiorder",  cmd_kalshiorder),
         ("meta",         cmd_meta),
         ("metapredict",  cmd_metapredict),
-        ("profit",       cmd_profit),
-        ("withdraw",     cmd_withdraw),
+        ("profit",          cmd_profit),
+        ("withdraw",        cmd_withdraw),
+        ("polyscan",        cmd_polyscan),
+        ("bestbets",        cmd_bestbets),
+        ("polyresearch",    cmd_polyresearch),
+        ("polybotstatus",   cmd_polybotstatus),
+        ("polybet",         cmd_polybet),
     ]
     for name, handler in handlers:
         app.add_handler(CommandHandler(name, handler))

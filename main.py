@@ -21,6 +21,7 @@ from trading.state import state
 from agents.bug_checker import run_bug_check
 from bot.telegram_bot import build_app as build_telegram
 from predictions import kalshi as kalshi_client
+from predictions.polymarket_research_bot import poly_research_bot
 from payments.stripe_checkout import (
     create_checkout_session, verify_session,
     issue_download_token, consume_token,
@@ -312,6 +313,13 @@ async def startup():
     scheduler.start()
     logger.info("Scheduler started — bug check every 30 min")
 
+    # Start Polymarket Research Bot
+    async def _notify_poly(msg: str):
+        await _notify_telegram(msg)
+    poly_research_bot.set_notifier(_notify_poly)
+    asyncio.create_task(poly_research_bot.start())
+    logger.info("Polymarket Research Bot started")
+
     # Run an immediate startup bug check
     asyncio.create_task(scheduled_bug_check())
 
@@ -320,6 +328,7 @@ async def startup():
 async def shutdown():
     global _tg_app
     scheduler.shutdown(wait=False)
+    poly_research_bot.stop()
     if _tg_app:
         await _tg_app.stop()
         await _tg_app.shutdown()
