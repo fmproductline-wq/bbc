@@ -99,7 +99,7 @@ class AnalysisTab(ctk.CTkFrame):
         self.source_lbl.pack(anchor="w")
 
         # Report card
-        report_card = Card(left, title="Signal Report")
+        report_card = Card(left, title="Pattern Verdict + Report")
         report_card.pack(fill="both", expand=True, pady=(8, 0))
 
         self.report_box = LogBox(report_card, height=400)
@@ -185,19 +185,18 @@ class AnalysisTab(ctk.CTkFrame):
                            self._show_macd.get(), self._show_volume.get())
                 self._last_df = df
 
-                # ── Signal report (crypto only via market_analyzer) ──────────
-                if is_crypto(coin):
-                    try:
-                        report = ma.analyze(coin, tf, limit)
-                        lines = self._format_report(report, coin, tf)
-                        self.after(0, self.report_box.clear)
-                        for text, level in lines:
-                            self.after(0, self.report_box.append, text, level)
-                    except Exception as re:
-                        self.after(0, self.report_box.append,
-                                   f"Signal analysis: {re}", "WARNING")
-                else:
-                    self._after_basic_report(df, coin, tf)
+                # ── Pattern engine verdict (works on ALL assets) ─────────────
+                try:
+                    # Fetch more history for backtest accuracy
+                    from trading.pattern_engine import evaluate_current, backtest_signals
+                    hist_limit = max(limit, 300)
+                    from analysis.data_fetcher import fetch_candles as _fc
+                    df_hist = _fc(coin, tf, hist_limit)
+                    verdict = evaluate_current(df_hist)
+                    all_stats = backtest_signals(df_hist)
+                    self.after(0, self._render_verdict, verdict, all_stats, coin, tf)
+                except Exception as pe:
+                    self.after(0, self.report_box.append, f"Pattern engine: {pe}", "WARNING")
 
             except Exception as e:
                 self.after(0, self.report_box.append, f"Failed: {e}", "ERROR")
@@ -208,63 +207,51 @@ class AnalysisTab(ctk.CTkFrame):
         if self._last_df is not None and not self._last_df.empty:
             self._run_analysis()
 
-    def _after_basic_report(self, df, coin, tf):
-        """Price/momentum report for non-crypto assets (futures, FX, indices)."""
-        import numpy as np
-        close   = df["close"]
-        rsi_val = df["rsi"].iloc[-1] if "rsi" in df.columns else float("nan")
-        change_pct = (close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100 if len(close) > 1 else 0.0
-        ma20  = close.rolling(20).mean().iloc[-1]
-        trend = "BULLISH" if close.iloc[-1] > ma20 else "BEARISH"
+    def _render_verdict(self, verdict, all_stats, coin, tf):
+        """Display pattern engine verdict and all historical stats."""
+        action = verdict.action
+        c = verdict.confidence
 
-        hl_signal = int(df["hott_lott_trend"].iloc[-1]) if "hott_lott_trend" in df.columns else 0
-        xt_signal = int(df["xt_signal"].iloc[-1])       if "xt_signal"       in df.columns else 0
+        action_level = (
+            "SUCCESS" if action == "LONG" else
+            "ERROR"   if action == "SHORT" else
+            "WARNING"
+        )
+        bar = "█" * int(c / 10) + "░" * (10 - int(c / 10))
 
         lines = [
+            ("═" * 38, "DEFAULT"),
+            (f" {coin}  {tf}  —  ${verdict.entry_price:,.4f}", "DEFAULT"),
+            ("═" * 38, "DEFAULT"),
+            (f"▶ VERDICT:  {action}  [{bar}] {c:.0f}%", action_level),
+            (f"  Setup:    {verdict.label}", action_level),
             ("─" * 38, "DEFAULT"),
-            (f" {coin} / {tf}  —  ${close.iloc[-1]:,.4f}", "DEFAULT"),
-            ("─" * 38, "DEFAULT"),
-            (f"Change:       {change_pct:+.2f}%",
-             "SUCCESS" if change_pct >= 0 else "ERROR"),
-            (f"Trend (MA20): {trend}",
-             "SUCCESS" if trend == "BULLISH" else "ERROR"),
-            (f"RSI:          {rsi_val:.1f}" if not np.isnan(rsi_val) else "RSI: —", "DEFAULT"),
-            ("─" * 38, "DEFAULT"),
-            (f"HOTT/LOTT:    {'▲ UP' if hl_signal==1 else '▼ DOWN' if hl_signal==-1 else '— FLAT'}",
-             "SUCCESS" if hl_signal == 1 else "ERROR" if hl_signal == -1 else "DEFAULT"),
-            (f"Xtreme Trend: {'▲ BUY' if xt_signal==1 else '▼ SELL' if xt_signal==-1 else '— FLAT'}",
-             "SUCCESS" if xt_signal == 1 else "ERROR" if xt_signal == -1 else "DEFAULT"),
-            ("─" * 38, "DEFAULT"),
-            ("Indicators calculated locally — data is private.", "DEFAULT"),
         ]
-        self.after(0, self.report_box.clear)
-        for text, level in lines:
-            self.after(0, self.report_box.append, text, level)
 
-    def _format_report(self, report, coin, tf) -> list[tuple[str, str]]:
-        return [
-            ("─" * 38, "DEFAULT"),
-            (f" {coin} / {tf}  —  ${report.price:,.4f}", "DEFAULT"),
-            ("─" * 38, "DEFAULT"),
-            (f"Trend:      {report.trend} ({report.strength})",
-             "SUCCESS" if report.trend == "BULLISH" else "ERROR" if report.trend == "BEARISH" else "DEFAULT"),
-            (f"RSI:        {report.rsi_val:.1f}", "DEFAULT"),
-            (f"MACD:       {report.macd_cross}",
-             "SUCCESS" if report.macd_cross == "BULLISH" else "ERROR" if report.macd_cross == "BEARISH" else "DEFAULT"),
-            (f"ATR:        {report.atr_val:.4f}", "DEFAULT"),
-            (f"Volatility: {report.volatility_pct:.2f}%", "DEFAULT"),
-            (f"Xtreme Trend: {'▲ BUY' if report.xt_signal==1 else '▼ SELL' if report.xt_signal==-1 else '— FLAT'}",
-             "SUCCESS" if report.xt_signal == 1 else "ERROR" if report.xt_signal == -1 else "DEFAULT"),
-            (f"HOTT/LOTT:  {'▲ UP' if report.hott_lott_signal==1 else '▼ DOWN' if report.hott_lott_signal==-1 else '— FLAT'}",
-             "SUCCESS" if report.hott_lott_signal == 1 else "ERROR" if report.hott_lott_signal == -1 else "DEFAULT"),
-            ("─" * 38, "DEFAULT"),
-            (f"Action:     {report.suggested_action}",
-             "SUCCESS" if "LONG" in report.suggested_action else "ERROR" if "SHORT" in report.suggested_action else "WARNING"),
-            (f"Stop Loss:  ${report.stop_loss:,.4f}", "ERROR"),
-            (f"TP1:        ${report.take_profit_1:,.4f}", "SUCCESS"),
-            (f"TP2:        ${report.take_profit_2:,.4f}", "SUCCESS"),
-            ("─" * 38, "DEFAULT"),
-            (report.summary, "DEFAULT"),
-            ("─" * 38, "DEFAULT"),
-            ("All indicators calculated locally — data is private.", "DEFAULT"),
-        ]
+        if action != "WAIT":
+            lines += [
+                (f"  Win rate:   {verdict.win_rate*100:.0f}%  ({verdict.sample_size} signals)", "DEFAULT"),
+                (f"  Expectancy: {verdict.expectancy:+.2f}% per trade", "DEFAULT"),
+                (f"  R:R ratio:  1:{verdict.rr:.1f}", "DEFAULT"),
+                ("─" * 38, "DEFAULT"),
+                (f"  Entry:  ${verdict.entry_price:,.4f}", "DEFAULT"),
+                (f"  Stop:   ${verdict.stop_loss:,.4f}", "ERROR"),
+                (f"  TP 1:   ${verdict.take_profit_1:,.4f}", "SUCCESS"),
+                (f"  TP 2:   ${verdict.take_profit_2:,.4f}", "SUCCESS"),
+                ("─" * 38, "DEFAULT"),
+            ]
+
+        lines.append((verdict.reasoning, "DEFAULT"))
+        lines.append(("═" * 38, "DEFAULT"))
+
+        # ── Historical pattern stats ──────────────────────────────────────────
+        if all_stats:
+            lines.append(("PATTERN HISTORY (last 300 bars)", "INFO"))
+            lines.append(("─" * 38, "DEFAULT"))
+            for lbl, s in sorted(all_stats.items(), key=lambda x: -x[1].expectancy):
+                lvl = "SUCCESS" if s.expectancy > 0.1 else "ERROR" if s.expectancy < 0 else "DEFAULT"
+                lines.append((s.summary(), lvl))
+
+        self.report_box.clear()
+        for text, level in lines:
+            self.report_box.append(text, level)

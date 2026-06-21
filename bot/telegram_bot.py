@@ -446,14 +446,51 @@ async def cmd_price(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 @auth
 async def cmd_analyze(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not ctx.args:
-        await update.message.reply_text("Usage: /analyze <coin> [tf]  e.g. /analyze BTC 1h")
+        await update.message.reply_text(
+            "Usage: /analyze <coin> [tf]\n"
+            "Examples: /analyze BTC 1h  |  /analyze CL 4h  |  /analyze GC 1d"
+        )
         return
     coin = ctx.args[0].upper()
     tf   = ctx.args[1] if len(ctx.args) > 1 else "1h"
-    await update.message.reply_text(f"⏳ Analyzing {coin} {tf}…")
+    await update.message.reply_text(f"⏳ Running pattern analysis on {coin} {tf}…")
     try:
-        report = ma.analyze(coin, tf)
-        await update.message.reply_text(report.to_telegram(), parse_mode="Markdown")
+        from trading.pattern_engine import full_report
+        verdict, all_stats = full_report(coin, tf, limit=300)
+
+        # ── Verdict message ───────────────────────────────────────────────────
+        action_emoji = {"LONG": "📈", "SHORT": "📉", "WAIT": "⏸", "CLOSE": "🔴"}.get(verdict.action, "⏸")
+        bar = "█" * int(verdict.confidence / 10) + "░" * (10 - int(verdict.confidence / 10))
+
+        msg = (
+            f"{action_emoji} *{verdict.action}* — {coin} {tf}\n"
+            f"Confidence: `[{bar}] {verdict.confidence:.0f}%`\n"
+            f"Setup: `{verdict.label}`\n"
+        )
+        if verdict.action != "WAIT":
+            msg += (
+                f"\n*Levels*\n"
+                f"Entry:  `${verdict.entry_price:,.4f}`\n"
+                f"Stop:   `${verdict.stop_loss:,.4f}`\n"
+                f"TP 1:   `${verdict.take_profit_1:,.4f}`\n"
+                f"TP 2:   `${verdict.take_profit_2:,.4f}`\n"
+                f"\n*Pattern Stats* ({verdict.sample_size} past signals)\n"
+                f"Win rate:   `{verdict.win_rate*100:.0f}%`\n"
+                f"Expectancy: `{verdict.expectancy:+.2f}%` per trade\n"
+                f"R:R:        `1:{verdict.rr:.1f}`\n"
+            )
+        msg += f"\n_{verdict.reasoning}_"
+        await update.message.reply_text(msg, parse_mode="Markdown")
+
+        # ── Historical stats table ────────────────────────────────────────────
+        if all_stats:
+            stat_lines = ["*All pattern history:*"]
+            for lbl, s in sorted(all_stats.items(), key=lambda x: -x[1].expectancy):
+                stat_lines.append(
+                    f"`{lbl}` — {s.count}× | WR {s.win_rate*100:.0f}% | EV {s.expectancy:+.2f}%"
+                )
+            await update.message.reply_text("\n".join(stat_lines), parse_mode="Markdown")
+
     except Exception as e:
         await update.message.reply_text(f"❌ {e}")
 
