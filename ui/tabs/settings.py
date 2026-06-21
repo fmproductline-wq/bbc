@@ -35,7 +35,6 @@ class SettingsTab(ctk.CTkFrame):
         ],
         "TradingView": [
             ("TRADINGVIEW_WEBHOOK_SECRET", "Webhook Secret", True),
-            ("TV_LAYOUT_ID", "Chart Layout ID (from TV URL /chart/<ID>/)", False),
         ],
         "Telegram": [
             ("TELEGRAM_BOT_TOKEN",      "Bot Token", True),

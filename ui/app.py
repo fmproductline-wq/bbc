@@ -246,15 +246,15 @@ class MainApp(ctk.CTk):
             pass
         self.after(5000, self._refresh_indicators)
 
-    # ── Symbol sync (Watchlist → Trading + Analysis + TradingView) ───────────
+    # ── Symbol sync (Watchlist → Analysis chart, private) ────────────────────
 
     def _on_symbol_select(self, ticker: str, display_name: str):
         """
         Called when user clicks a symbol in the watchlist.
-        1. Updates the coin field in Trading and Analysis tabs.
-        2. Opens TradingView in the browser at that symbol.
+        Navigates to Analysis tab and loads the private in-app chart.
+        No data leaves the app — all indicators run locally.
         """
-        # Update Trading tab coin fields
+        # Also sync coin field in Trading tab
         trading = self._tab_frames.get("Trading")
         if trading:
             for entry in (getattr(trading, "price_coin", None),
@@ -263,27 +263,13 @@ class MainApp(ctk.CTk):
                     entry.delete(0, "end")
                     entry.insert(0, ticker)
 
-        # Update Analysis tab coin field
+        # Navigate to Analysis and trigger chart load
+        self._navigate("Analysis")
         analysis = self._tab_frames.get("Analysis")
-        if analysis:
-            coin_e = getattr(analysis, "coin_e", None)
-            if coin_e:
-                coin_e.delete(0, "end")
-                coin_e.insert(0, ticker)
-            # Mirror the current timeframe selection
-            tf = "1h"
-            tf_box = getattr(analysis, "tf_box", None)
-            if tf_box:
-                tf = tf_box.get()
+        if analysis and hasattr(analysis, "load_symbol"):
+            analysis.load_symbol(ticker)
 
-        # Open TradingView in browser
-        from trading.tv_sync import open_chart
-        tf = "1h"
-        analysis = self._tab_frames.get("Analysis")
-        if analysis and getattr(analysis, "tf_box", None):
-            tf = analysis.tf_box.get()
-        url = open_chart(ticker, tf)
-        self.set_notification(f"📊 {display_name} → TradingView", color=ACCENT)
+        self.set_notification(f"📊 {display_name} — loading chart…", color=ACCENT)
 
     # ── Notifications ──────────────────────────────────────────────────────────
 
