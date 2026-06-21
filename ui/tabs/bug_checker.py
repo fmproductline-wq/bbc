@@ -102,13 +102,16 @@ class BugCheckerTab(ctk.CTkFrame):
 
         log_card = Card(right, title="Check Results")
         log_card.grid(row=0, column=0, sticky="nsew")
-        log_card.rowconfigure(0, weight=1)
-        log_card.columnconfigure(0, weight=1)
 
-        self.result_box = LogBox(log_card)
+        log_inner = ctk.CTkFrame(log_card, fg_color="transparent")
+        log_inner.pack(fill="both", expand=True)
+        log_inner.rowconfigure(0, weight=1)
+        log_inner.columnconfigure(0, weight=1)
+
+        self.result_box = LogBox(log_inner)
         self.result_box.grid(row=0, column=0, sticky="nsew", padx=PAD, pady=(0, PAD))
 
-        btn_row = ctk.CTkFrame(log_card, fg_color="transparent")
+        btn_row = ctk.CTkFrame(log_inner, fg_color="transparent")
         btn_row.grid(row=1, column=0, sticky="ew", padx=PAD, pady=(0, PAD))
         ctk.CTkButton(btn_row, text="Clear", width=80, fg_color=BG_INPUT,
                       text_color=TEXT_SECONDARY, hover_color=BORDER,
