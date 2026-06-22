@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>BestBrand Deal Bots</title>
+<link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
+        <line x1="7" y1="7" x2="7.01" y2="7"/>
+      </svg>
+      <span>BestBrand <strong>Deal Bots</strong></span>
+    </div>
+    <div class="header-tagline">AI-powered bots scanning the web for your best deals</div>
+  </header>
+
+  <!-- CONTROL PANEL -->
+  <section class="panel">
+    <!-- Search box -->
+    <div class="search-row">
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input id="searchInput" type="text" placeholder='Optional: type a specific product or keyword… e.g. "iPhone 15" or "Nike shoes"'/>
+        <button id="clearSearch" class="clear-btn" title="Clear">✕</button>
+      </div>
+    </div>
+
+    <!-- Category checklist -->
+    <div class="section-label">
+      <span>Select deal categories</span>
+      <div class="cat-actions">
+        <button id="selectAll" class="link-btn">Select all</button>
+        <span class="divider">|</span>
+        <button id="clearAll" class="link-btn">Clear all</button>
+      </div>
+    </div>
+    <div id="categoryGrid" class="category-grid"></div>
+
+    <!-- Scan button -->
+    <div class="scan-row">
+      <button id="scanBtn" class="scan-btn" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        Scan for Deals
+      </button>
+      <span id="selCount" class="sel-count">0 categories selected</span>
+    </div>
+  </section>
+
+  <!-- BOT STATUS STRIP -->
+  <div id="statusStrip" class="status-strip hidden">
+    <div class="bots-row" id="botRow"></div>
+    <div class="status-msg" id="statusMsg">Bots are scanning the web…</div>
+  </div>
+
+  <!-- RESULTS -->
+  <section id="results" class="results hidden">
+    <div class="results-header">
+      <h2 id="resultsTitle">Deals Found</h2>
+      <div class="filter-row">
+        <input id="filterInput" type="text" placeholder="Filter results…" class="filter-input"/>
+        <select id="sortSelect" class="sort-select">
+          <option value="default">Sort: Default</option>
+          <option value="price_asc">Price: Low → High</option>
+          <option value="price_desc">Price: High → Low</option>
+          <option value="discount">Best Discount</option>
+        </select>
+      </div>
+    </div>
+    <div id="dealGrid" class="deal-grid"></div>
+    <div id="noDeals" class="no-deals hidden">No deals matched your filters.</div>
+  </section>
+
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>
