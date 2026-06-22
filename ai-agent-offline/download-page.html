@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>BestBrand AI Agent — Download</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0a0a; --surface: #111; --border: #222; --brand: #0ea5e9;
+      --brand-dim: rgba(14,165,233,.15); --text: #e5e5e5; --muted: #666;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; }
+    a { color: var(--brand); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* NAV */
+    nav { display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 2rem; border-bottom: 1px solid var(--border); }
+    .logo { display: flex; align-items: center; gap: .6rem; font-weight: 700; font-size: 1.1rem; color: #fff; text-decoration: none; }
+    .logo-icon { width: 32px; height: 32px; background: var(--brand); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+    nav-links { display: flex; gap: 1.5rem; }
+
+    /* HERO */
+    .hero { text-align: center; padding: 5rem 1.5rem 3rem; max-width: 700px; margin: 0 auto; }
+    .badge { display: inline-flex; align-items: center; gap: .4rem; background: var(--brand-dim); border: 1px solid rgba(14,165,233,.3); color: var(--brand); font-size: .75rem; font-weight: 600; padding: .3rem .75rem; border-radius: 100px; margin-bottom: 1.5rem; letter-spacing: .05em; text-transform: uppercase; }
+    h1 { font-size: clamp(2rem, 5vw, 3.25rem); font-weight: 800; color: #fff; line-height: 1.15; margin-bottom: 1rem; }
+    h1 span { color: var(--brand); }
+    .hero p { font-size: 1.1rem; color: var(--muted); line-height: 1.7; max-width: 540px; margin: 0 auto 2.5rem; }
+
+    /* DOWNLOAD CARDS */
+    .download-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; max-width: 800px; margin: 0 auto 4rem; padding: 0 1.5rem; }
+    .dl-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; text-align: center; transition: border-color .2s, transform .15s; }
+    .dl-card:hover { border-color: var(--brand); transform: translateY(-2px); }
+    .dl-card .os-icon { font-size: 2.5rem; margin-bottom: .75rem; }
+    .dl-card h3 { font-size: .95rem; font-weight: 600; color: #fff; margin-bottom: .25rem; }
+    .dl-card p { font-size: .78rem; color: var(--muted); margin-bottom: 1rem; }
+    .dl-btn { display: inline-flex; align-items: center; gap: .5rem; background: var(--brand); color: #fff; font-size: .85rem; font-weight: 600; padding: .6rem 1.25rem; border-radius: 10px; transition: background .2s; text-decoration: none; }
+    .dl-btn:hover { background: #0284c7; text-decoration: none; }
+    .dl-btn-sec { background: #1a1a1a; border: 1px solid #2a2a2a; color: var(--text); }
+    .dl-btn-sec:hover { background: #222; }
+
+    /* FEATURES */
+    .features { max-width: 900px; margin: 0 auto 4rem; padding: 0 1.5rem; }
+    .features h2 { text-align: center; font-size: 1.75rem; font-weight: 700; color: #fff; margin-bottom: 2rem; }
+    .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+    .feature-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; }
+    .feature-card .icon { width: 36px; height: 36px; background: var(--brand-dim); border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: .75rem; }
+    .feature-card h4 { font-size: .9rem; font-weight: 600; color: #fff; margin-bottom: .3rem; }
+    .feature-card p { font-size: .8rem; color: var(--muted); line-height: 1.6; }
+
+    /* STEPS */
+    .steps { max-width: 600px; margin: 0 auto 4rem; padding: 0 1.5rem; }
+    .steps h2 { text-align: center; font-size: 1.75rem; font-weight: 700; color: #fff; margin-bottom: 2rem; }
+    .step { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
+    .step-num { width: 32px; height: 32px; border-radius: 50%; background: var(--brand-dim); border: 1px solid rgba(14,165,233,.3); color: var(--brand); font-size: .85rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+    .step-content h4 { font-size: .95rem; font-weight: 600; color: #fff; margin-bottom: .2rem; }
+    .step-content p { font-size: .85rem; color: var(--muted); line-height: 1.6; }
+    code { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 5px; padding: .15em .4em; font-family: monospace; font-size: .82em; color: #7dd3fc; }
+
+    /* FOOTER */
+    footer { text-align: center; padding: 2rem; border-top: 1px solid var(--border); color: var(--muted); font-size: .82rem; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="logo">
+    <div class="logo-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round">
+        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+      </svg>
+    </div>
+    BestBrand AI
+  </a>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="badge">
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20,6 9,17 4,12"/></svg>
+    100% Free &amp; Offline
+  </div>
+  <h1>Your AI Agent.<br/><span>On Your Device.</span></h1>
+  <p>BestBrand AI runs entirely on your PC or Mac. No subscription, no account, no data sent anywhere. Plug in a USB or install it — works forever offline.</p>
+</section>
+
+<!-- DOWNLOADS -->
+<div class="download-grid">
+  <div class="dl-card">
+    <div class="os-icon">🪟</div>
+    <h3>Windows</h3>
+    <p>Installer (.exe) or portable USB version</p>
+    <a href="./releases/BestBrand-AI-Agent-Setup.exe" class="dl-btn" download>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download (.exe)
+    </a>
+    <br/><br/>
+    <a href="./releases/BestBrand-AI-Agent-Portable.exe" class="dl-btn dl-btn-sec" download>Portable (USB)</a>
+  </div>
+
+  <div class="dl-card">
+    <div class="os-icon">🍎</div>
+    <h3>macOS</h3>
+    <p>Universal (Intel + Apple Silicon)</p>
+    <a href="./releases/BestBrand-AI-Agent.dmg" class="dl-btn" download>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download (.dmg)
+    </a>
+  </div>
+
+  <div class="dl-card">
+    <div class="os-icon">🐧</div>
+    <h3>Linux</h3>
+    <p>AppImage (works on all distros)</p>
+    <a href="./releases/BestBrand-AI-Agent.AppImage" class="dl-btn" download>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download (.AppImage)
+    </a>
+    <br/><br/>
+    <a href="./releases/bestbrand-ai-agent.deb" class="dl-btn dl-btn-sec" download>.deb package</a>
+  </div>
+</div>
+
+<!-- HOW IT WORKS -->
+<section class="steps">
+  <h2>Get Started in 3 Steps</h2>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-content">
+      <h4>Download &amp; Install Ollama (free)</h4>
+      <p>Ollama is the free AI engine that runs models locally. Download it at <a href="https://ollama.com/download">ollama.com/download</a> — takes 1 minute.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-content">
+      <h4>Download a Free AI Model</h4>
+      <p>Open your terminal and run: <code>ollama pull llama3.2:3b</code><br/>This downloads a ~2 GB AI model. Only needed once.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-content">
+      <h4>Install or Run BestBrand AI</h4>
+      <p>Install the app above (or use the portable USB version). Open it and start chatting. No internet required.</p>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features">
+  <h2>Why BestBrand AI?</h2>
+  <div class="feature-grid">
+    <div class="feature-card">
+      <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+      <h4>100% Private</h4>
+      <p>Your conversations never leave your device. No cloud, no servers, no tracking.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg></div>
+      <h4>Works Offline</h4>
+      <p>No internet needed. Works on planes, remote areas, or air-gapped systems.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+      <h4>USB Portable</h4>
+      <p>Copy the portable .exe to a USB stick. Plug in anywhere and run — no installation needed.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+      <h4>Free AI Models</h4>
+      <p>Uses Llama 3, Mistral, Phi-3, Gemma and more — all open-source and completely free.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2"><polyline points="16,18 22,12 16,6"/><polyline points="8,6 2,12 8,18"/></svg></div>
+      <h4>Markdown & Code</h4>
+      <p>Full markdown rendering with syntax highlighting. Perfect for coding help.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+      <h4>Multiple Models</h4>
+      <p>Switch between different AI models in one click. Specialized models for code, writing, and more.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>© 2024 BestBrand Corp · <a href="mailto:bestbrandcorp@gmail.com">bestbrandcorp@gmail.com</a> · All models run locally on your device</p>
+</footer>
+
+</body>
+</html>
