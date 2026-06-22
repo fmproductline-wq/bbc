@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<meta name="theme-color" content="#075E54"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<title>IngredientAI — Food Scanner</title>
+<link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;IngredientAI&quot;,&quot;short_name&quot;:&quot;IngredientAI&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;#075E54&quot;,&quot;theme_color&quot;:&quot;#075E54&quot;}"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --wa-green: #075E54;
+    --wa-light-green: #128C7E;
+    --wa-teal: #25D366;
+    --wa-bg: #ECE5DD;
+    --wa-chat-bg: #E5DDD5;
+    --wa-out: #DCF8C6;
+    --wa-in: #FFFFFF;
+    --wa-header: #075E54;
+    --wa-text: #111B21;
+    --wa-sub: #667781;
+    --wa-border: #E9EDEF;
+    --wa-icon: #54656F;
+    --bubble-radius: 8px;
+  }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background: var(--wa-bg);
+    color: var(--wa-text);
+  }
+
+  /* ── APP SHELL ── */
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    max-width: 480px;
+    margin: 0 auto;
+    box-shadow: 0 0 40px rgba(0,0,0,0.3);
+    background: var(--wa-chat-bg);
+    position: relative;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: var(--wa-header);
+    color: #fff;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    z-index: 10;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+  .avatar {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--wa-teal);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+  }
+  .header-info { flex: 1; }
+  .header-info .name { font-weight: 600; font-size: 16px; line-height: 1.2; }
+  .header-info .status { font-size: 12px; opacity: 0.85; }
+  .header-actions { display: flex; gap: 18px; }
+  .header-actions button {
+    background: none; border: none; color: #fff;
+    cursor: pointer; font-size: 20px; padding: 4px;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0.9; transition: opacity 0.2s;
+  }
+  .header-actions button:hover { opacity: 1; }
+
+  /* ── API KEY BANNER ── */
+  #api-banner {
+    background: #FFF3CD;
+    border-bottom: 1px solid #FFDA6A;
+    padding: 8px 14px;
+    font-size: 12.5px;
+    color: #664D03;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; flex-shrink: 0;
+  }
+  #api-banner button {
+    background: var(--wa-green); color: #fff;
+    border: none; border-radius: 4px;
+    padding: 4px 10px; font-size: 12px;
+    cursor: pointer; white-space: nowrap;
+  }
+  #api-banner.hidden { display: none; }
+
+  /* ── CHAT AREA ── */
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Crect width='400' height='400' fill='%23E5DDD5'/%3E%3Ccircle cx='50' cy='50' r='1.5' fill='%23CCB9AE' opacity='0.5'/%3E%3Ccircle cx='150' cy='100' r='1.5' fill='%23CCB9AE' opacity='0.5'/%3E%3Ccircle cx='250' cy='50' r='1.5' fill='%23CCB9AE' opacity='0.5'/%3E%3Ccircle cx='350' cy='100' r='1.5' fill='%23CCB9AE' opacity='0.5'/%3E%3Ccircle cx='100' cy='200' r='1.5' fill='%23CCB9AE' opacity='0.5'/%3E%3Ccircle cx='300' cy='200' r='1.5' fill='%23CCB9AE' opacity='0.5'/%3E%3Ccircle cx='200' cy='300' r='1.5' fill='%23CCB9AE' opacity='0.5'/%3E%3Ccircle cx='50' cy='350' r='1.5' fill='%23CCB9AE' opacity='0.5'/%3E%3Ccircle cx='350' cy='350' r='1.5' fill='%23CCB9AE' opacity='0.5'/%3E%3C/svg%3E");
+  }
+  #chat::-webkit-scrollbar { width: 5px; }
+  #chat::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 3px; }
+
+  /* ── DATE DIVIDER ── */
+  .date-divider {
+    text-align: center; margin: 8px 0;
+  }
+  .date-divider span {
+    background: rgba(225,245,254,0.92);
+    color: #54656F;
+    font-size: 11.5px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    box-shadow: 0 1px 1px rgba(0,0,0,0.08);
+  }
+
+  /* ── BUBBLES ── */
+  .msg { display: flex; margin: 2px 0; }
+  .msg.out { justify-content: flex-end; }
+  .msg.in  { justify-content: flex-start; }
+
+  .bubble {
+    max-width: 80%;
+    padding: 6px 8px 6px 9px;
+    border-radius: var(--bubble-radius);
+    box-shadow: 0 1px 1px rgba(0,0,0,0.1);
+    position: relative;
+    word-break: break-word;
+    font-size: 14.2px;
+    line-height: 1.45;
+  }
+  .msg.out .bubble {
+    background: var(--wa-out);
+    border-top-right-radius: 2px;
+  }
+  .msg.in .bubble {
+    background: var(--wa-in);
+    border-top-left-radius: 2px;
+  }
+
+  .bubble .time {
+    font-size: 10.5px; color: var(--wa-sub);
+    float: right; margin: 4px 0 -2px 8px;
+    position: relative; bottom: 0;
+  }
+  .msg.out .bubble .time { color: #7CB9A0; }
+
+  /* image preview inside bubble */
+  .bubble img.preview {
+    width: 100%; max-width: 240px;
+    border-radius: 6px;
+    display: block; margin-bottom: 6px;
+    cursor: pointer;
+  }
+
+  /* ── INGREDIENT CARD ── */
+  .ingredient-card {
+    margin: 6px 0 4px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(0,0,0,0.08);
+  }
+  .ing-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    font-weight: 700; font-size: 13.5px;
+    cursor: pointer; user-select: none;
+    transition: background 0.15s;
+  }
+  .ing-header:hover { filter: brightness(0.97); }
+  .ing-badge {
+    font-size: 16px;
+  }
+  .ing-header .arrow { margin-left: auto; font-size: 12px; transition: transform 0.2s; }
+  .ing-header.open .arrow { transform: rotate(180deg); }
+
+  .ing-body {
+    display: none; padding: 8px 10px 10px;
+    font-size: 13px; line-height: 1.55;
+  }
+  .ing-body.open { display: block; }
+  .ing-body h4 { font-size: 12px; font-weight: 700; margin: 8px 0 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .ing-body h4:first-child { margin-top: 0; }
+  .ing-body ul { padding-left: 16px; }
+  .ing-body ul li { margin-bottom: 3px; }
+
+  .good-bg  { background: #E8F5E9; border-left: 3px solid #4CAF50; }
+  .bad-bg   { background: #FFEBEE; border-left: 3px solid #F44336; }
+  .warn-bg  { background: #FFF8E1; border-left: 3px solid #FF9800; }
+  .neut-bg  { background: #F3F4F6; border-left: 3px solid #9E9E9E; }
+
+  /* rating pill */
+  .rating-pill {
+    display: inline-block;
+    padding: 1px 7px; border-radius: 10px;
+    font-size: 11px; font-weight: 700;
+    margin-left: 6px; vertical-align: middle;
+  }
+  .pill-good { background: #C8E6C9; color: #1B5E20; }
+  .pill-bad  { background: #FFCDD2; color: #B71C1C; }
+  .pill-warn { background: #FFF9C4; color: #F57F17; }
+  .pill-neut { background: #E0E0E0; color: #424242; }
+
+  /* overall summary bar */
+  .summary-bar {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin: 6px 0 2px;
+  }
+  .summary-chip {
+    padding: 3px 9px; border-radius: 12px;
+    font-size: 12px; font-weight: 600;
+  }
+
+  /* typing indicator */
+  .typing-bubble {
+    background: var(--wa-in);
+    border-radius: var(--bubble-radius);
+    border-top-left-radius: 2px;
+    padding: 10px 14px;
+    box-shadow: 0 1px 1px rgba(0,0,0,0.1);
+    display: inline-flex; gap: 4px; align-items: center;
+  }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #90A4AE;
+    animation: bounce 1.2s infinite ease-in-out;
+  }
+  .dot:nth-child(2) { animation-delay: 0.2s; }
+  .dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce {
+    0%,60%,100% { transform: translateY(0); }
+    30% { transform: translateY(-5px); }
+  }
+
+  /* ── INPUT BAR ── */
+  #input-bar {
+    background: #F0F2F5;
+    padding: 8px 10px;
+    display: flex; align-items: flex-end; gap: 8px;
+    flex-shrink: 0;
+    border-top: 1px solid #E0E0E0;
+  }
+
+  .attach-btn, .send-btn {
+    border: none; border-radius: 50%;
+    width: 46px; height: 46px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0; transition: background 0.2s, transform 0.15s;
+    font-size: 20px;
+  }
+  .attach-btn { background: #fff; color: var(--wa-icon); box-shadow: 0 1px 2px rgba(0,0,0,0.15); }
+  .attach-btn:hover { background: #F5F5F5; }
+  .send-btn { background: var(--wa-teal); color: #fff; box-shadow: 0 2px 6px rgba(37,211,102,0.4); }
+  .send-btn:hover { background: #1DA853; transform: scale(1.05); }
+  .send-btn:disabled { background: #B0BEC5; box-shadow: none; cursor: default; transform: none; }
+
+  .input-wrap {
+    flex: 1;
+    background: #fff;
+    border-radius: 22px;
+    padding: 10px 14px;
+    font-size: 14.5px;
+    min-height: 46px;
+    max-height: 120px;
+    overflow-y: auto;
+    outline: none;
+    color: var(--wa-text);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    line-height: 1.4;
+  }
+  .input-wrap:empty::before {
+    content: 'Type ingredients or upload a photo…';
+    color: #90A4AE; pointer-events: none;
+  }
+
+  /* attach menu */
+  #attach-menu {
+    position: absolute; bottom: 70px; left: 10px;
+    background: #fff; border-radius: 14px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    padding: 6px; display: none; z-index: 20;
+    flex-direction: column; gap: 2px;
+    min-width: 180px;
+  }
+  #attach-menu.open { display: flex; }
+  .attach-opt {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; border-radius: 10px;
+    cursor: pointer; font-size: 14px; font-weight: 500;
+    transition: background 0.15s; color: var(--wa-text);
+  }
+  .attach-opt:hover { background: #F5F5F5; }
+  .attach-opt .icon {
+    width: 40px; height: 40px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+
+  /* ── MODAL ── */
+  #modal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.85); z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  #modal.open { display: flex; }
+  #modal-inner {
+    background: #fff; border-radius: 14px;
+    padding: 22px; width: 90%; max-width: 400px;
+    max-height: 90vh; overflow-y: auto;
+  }
+  #modal h2 { margin-bottom: 14px; font-size: 17px; color: var(--wa-green); }
+  #modal label { font-size: 13px; color: var(--wa-sub); margin-bottom: 4px; display: block; }
+  #modal input, #modal select {
+    width: 100%; padding: 10px 12px;
+    border: 1.5px solid #E0E0E0; border-radius: 8px;
+    font-size: 14px; margin-bottom: 14px; outline: none;
+    transition: border-color 0.2s;
+  }
+  #modal input:focus, #modal select:focus { border-color: var(--wa-light-green); }
+  #modal .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+  #modal button {
+    padding: 9px 18px; border-radius: 8px;
+    border: none; cursor: pointer; font-size: 14px; font-weight: 600;
+  }
+  .btn-cancel { background: #F5F5F5; color: var(--wa-text); }
+  .btn-save { background: var(--wa-green); color: #fff; }
+
+  /* ── IMAGE LIGHTBOX ── */
+  #lightbox {
+    display: none; position: fixed; inset: 0;
+    background: #000; z-index: 200;
+    align-items: center; justify-content: center; flex-direction: column;
+  }
+  #lightbox.open { display: flex; }
+  #lightbox img { max-width: 100%; max-height: 90vh; object-fit: contain; }
+  #lightbox-close {
+    position: absolute; top: 16px; right: 20px;
+    color: #fff; font-size: 30px; cursor: pointer; background: none; border: none;
+  }
+
+  /* hidden inputs */
+  #fileInput, #cameraInput { display: none; }
+
+  /* ── RESPONSIVE DESKTOP ── */
+  @media (min-width: 600px) {
+    body { background: #111B21; display: flex; align-items: center; justify-content: center; }
+    #app { border-radius: 12px; height: 92vh; }
+  }
+
+  /* scrollbar nice */
+  .ing-body::-webkit-scrollbar { width: 4px; }
+  .ing-body::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- HEADER -->
+  <header>
+    <div class="avatar">🥗</div>
+    <div class="header-info">
+      <div class="name">IngredientAI</div>
+      <div class="status" id="status-text">The truth about your food</div>
+    </div>
+    <div class="header-actions">
+      <button title="Settings" onclick="openSettings()">⚙️</button>
+    </div>
+  </header>
+
+  <!-- API KEY BANNER -->
+  <div id="api-banner">
+    ⚠️ Add your Claude API key to enable AI analysis
+    <button onclick="openSettings()">Set Key</button>
+  </div>
+
+  <!-- CHAT -->
+  <div id="chat">
+    <div class="date-divider"><span>Today</span></div>
+    <!-- welcome bubble -->
+    <div class="msg in" id="welcome-msg">
+      <div class="bubble">
+        👋 <strong>Welcome to IngredientAI!</strong><br><br>
+        I give you the <em>unfiltered truth</em> about every ingredient — the good, the bad, and the ugly.<br><br>
+        📷 <strong>Take a photo</strong> of an ingredient label or food package<br>
+        🖼️ <strong>Upload an image</strong> from your gallery<br>
+        ✍️ <strong>Type ingredients</strong> directly in the box below<br><br>
+        No sugarcoating. No corporate spin. Just facts.
+        <span class="time">now</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ATTACH MENU -->
+  <div id="attach-menu">
+    <div class="attach-opt" onclick="openCamera()">
+      <div class="icon" style="background:#E8F5E9;">📷</div> Take Photo
+    </div>
+    <div class="attach-opt" onclick="openGallery()">
+      <div class="icon" style="background:#E3F2FD;">🖼️</div> Upload Image
+    </div>
+  </div>
+
+  <!-- INPUT BAR -->
+  <div id="input-bar">
+    <button class="attach-btn" onclick="toggleAttach()" title="Attach photo">📎</button>
+    <div class="input-wrap" id="msgInput" contenteditable="true" spellcheck="true"
+         onkeydown="handleKey(event)" oninput="updateSendBtn()"></div>
+    <button class="send-btn" id="sendBtn" onclick="sendText()" disabled title="Send">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+      </svg>
+    </button>
+  </div>
+
+</div>
+
+<!-- SETTINGS MODAL -->
+<div id="modal">
+  <div id="modal-inner">
+    <h2>⚙️ Settings</h2>
+    <label>Claude API Key (get one at console.anthropic.com)</label>
+    <input type="password" id="apiKeyInput" placeholder="sk-ant-…"/>
+    <label>Analysis depth</label>
+    <select id="depthSelect">
+      <option value="standard">Standard</option>
+      <option value="detailed" selected>Detailed</option>
+      <option value="expert">Expert / Scientific</option>
+    </select>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-save" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- LIGHTBOX -->
+<div id="lightbox">
+  <button id="lightbox-close" onclick="closeLightbox()">✕</button>
+  <img id="lightbox-img" src="" alt=""/>
+</div>
+
+<!-- HIDDEN FILE INPUTS -->
+<input type="file" id="fileInput" accept="image/*" onchange="handleFileUpload(event)"/>
+<input type="file" id="cameraInput" accept="image/*" capture="environment" onchange="handleFileUpload(event)"/>
+
+<script>
+// ── STATE ──
+let apiKey = localStorage.getItem('ingredient_ai_key') || '';
+let depth  = localStorage.getItem('ingredient_ai_depth') || 'detailed';
+let busy   = false;
+
+// ── INIT ──
+(function init() {
+  if (apiKey) {
+    document.getElementById('api-banner').classList.add('hidden');
+  }
+  document.getElementById('apiKeyInput').value = apiKey;
+  document.getElementById('depthSelect').value = depth;
+})();
+
+// ── SETTINGS ──
+function openSettings() {
+  document.getElementById('modal').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+}
+function saveSettings() {
+  apiKey = document.getElementById('apiKeyInput').value.trim();
+  depth  = document.getElementById('depthSelect').value;
+  localStorage.setItem('ingredient_ai_key', apiKey);
+  localStorage.setItem('ingredient_ai_depth', depth);
+  if (apiKey) {
+    document.getElementById('api-banner').classList.add('hidden');
+  } else {
+    document.getElementById('api-banner').classList.remove('hidden');
+  }
+  closeModal();
+}
+
+// ── ATTACH MENU ──
+function toggleAttach() {
+  const m = document.getElementById('attach-menu');
+  m.classList.toggle('open');
+}
+document.addEventListener('click', (e) => {
+  const m = document.getElementById('attach-menu');
+  if (!e.target.closest('#attach-menu') && !e.target.closest('.attach-btn')) {
+    m.classList.remove('open');
+  }
+});
+function openCamera() {
+  document.getElementById('attach-menu').classList.remove('open');
+  document.getElementById('cameraInput').click();
+}
+function openGallery() {
+  document.getElementById('attach-menu').classList.remove('open');
+  document.getElementById('fileInput').click();
+}
+
+// ── TEXT INPUT ──
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendText();
+  }
+}
+function updateSendBtn() {
+  const v = document.getElementById('msgInput').innerText.trim();
+  document.getElementById('sendBtn').disabled = !v || busy;
+}
+
+// ── SEND TEXT ──
+async function sendText() {
+  const input = document.getElementById('msgInput');
+  const text  = input.innerText.trim();
+  if (!text || busy) return;
+  input.innerText = '';
+  updateSendBtn();
+  addOutBubble(null, text);
+  await analyze({ text });
+}
+
+// ── FILE UPLOAD ──
+async function handleFileUpload(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (ev) => {
+    const dataUrl = ev.target.result;
+    addOutBubble(dataUrl, 'Scan this for me 🔍');
+    await analyze({ imageDataUrl: dataUrl });
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── ADD BUBBLES ──
+function addOutBubble(imageDataUrl, text) {
+  const chat = document.getElementById('chat');
+  const div  = document.createElement('div');
+  div.className = 'msg out';
+  let html = '';
+  if (imageDataUrl) {
+    html += `<img class="preview" src="${imageDataUrl}" alt="uploaded" onclick="openLightbox('${imageDataUrl}')"/>`;
+  }
+  html += escHtml(text);
+  div.innerHTML = `<div class="bubble">${html}<span class="time">${nowTime()}</span></div>`;
+  chat.appendChild(div);
+  scrollBottom();
+}
+
+function addTyping() {
+  const chat = document.getElementById('chat');
+  const div  = document.createElement('div');
+  div.className = 'msg in'; div.id = 'typing-indicator';
+  div.innerHTML = `<div class="typing-bubble"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
+  chat.appendChild(div);
+  scrollBottom();
+  return div;
+}
+
+function removeTyping() {
+  const t = document.getElementById('typing-indicator');
+  if (t) t.remove();
+}
+
+// ── ANALYZE ──
+async function analyze({ text, imageDataUrl }) {
+  if (!apiKey) {
+    addSystemBubble('⚠️ Please set your Claude API key in settings first.');
+    return;
+  }
+  if (busy) return;
+  busy = true;
+  document.getElementById('sendBtn').disabled = true;
+  document.getElementById('status-text').textContent = 'Analyzing…';
+
+  const typing = addTyping();
+
+  const depthGuide = {
+    standard: 'Give a clear, concise analysis for each ingredient.',
+    detailed: 'Give a thorough analysis covering health effects, common concerns, and context.',
+    expert: 'Give a scientific, peer-research-level analysis with mechanisms of action, studies referenced where known, dose-response context, and population-specific concerns.'
+  }[depth];
+
+  const systemPrompt = `You are an unfiltered food ingredient analyst. Your job is to tell users EXACTLY what each ingredient does — good AND bad — with zero corporate bias, zero sugarcoating, and zero censorship.
+
+${depthGuide}
+
+For each ingredient you identify, respond with a JSON array. Each element must have:
+- "name": ingredient name
+- "rating": one of "good", "bad", "mixed", "neutral"
+- "emoji": a single relevant emoji
+- "good_points": array of strings (empty array if none)
+- "bad_points": array of strings (empty array if none)
+- "verdict": one sentence raw verdict
+
+After the JSON array, add a "---SUMMARY---" line followed by a one-paragraph overall assessment of this product/ingredient list.
+
+If given an image, extract all visible ingredients from it first, then analyze each one.
+If no recognizable ingredients are found, say so clearly in the summary.
+Never refuse to analyze an ingredient. Be honest about controversial additives, preservatives, chemicals, and processing agents.`;
+
+  const userContent = [];
+  if (imageDataUrl) {
+    const [header, b64] = imageDataUrl.split(',');
+    const mime = header.match(/:(.*?);/)[1];
+    userContent.push({ type: 'image', source: { type: 'base64', media_type: mime, data: b64 } });
+    userContent.push({ type: 'text', text: text || 'Identify all ingredients in this image and analyze each one.' });
+  } else {
+    userContent.push({ type: 'text', text: `Analyze these ingredients: ${text}` });
+  }
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'anthropic-dangerous-direct-browser-calls': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-8',
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userContent }]
+      })
+    });
+
+    removeTyping();
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      addSystemBubble(`❌ API Error ${res.status}: ${err.error?.message || res.statusText}`);
+      return;
+    }
+
+    const data = await res.json();
+    const raw  = data.content[0].text;
+    renderAnalysis(raw);
+
+  } catch (err) {
+    removeTyping();
+    addSystemBubble(`❌ Network error: ${err.message}`);
+  } finally {
+    busy = false;
+    document.getElementById('sendBtn').disabled = false;
+    document.getElementById('status-text').textContent = 'The truth about your food';
+  }
+}
+
+// ── RENDER ANALYSIS ──
+function renderAnalysis(raw) {
+  const chat = document.getElementById('chat');
+  const div  = document.createElement('div');
+  div.className = 'msg in';
+
+  let ingredients = [];
+  let summary = '';
+
+  const summaryParts = raw.split('---SUMMARY---');
+  if (summaryParts.length >= 2) {
+    summary = summaryParts[1].trim();
+  }
+
+  const jsonMatch = summaryParts[0].match(/\[[\s\S]*\]/);
+  if (jsonMatch) {
+    try { ingredients = JSON.parse(jsonMatch[0]); } catch(e) {}
+  }
+
+  if (!ingredients.length) {
+    // fallback plain text
+    div.innerHTML = `<div class="bubble">${escHtml(raw)}<span class="time">${nowTime()}</span></div>`;
+    chat.appendChild(div);
+    scrollBottom();
+    return;
+  }
+
+  // summary chips
+  const counts = { good: 0, bad: 0, mixed: 0, neutral: 0 };
+  ingredients.forEach(i => counts[i.rating] = (counts[i.rating]||0) + 1);
+  let chips = '';
+  if (counts.good)  chips += `<span class="summary-chip" style="background:#C8E6C9;color:#1B5E20;">✅ ${counts.good} good</span>`;
+  if (counts.mixed) chips += `<span class="summary-chip" style="background:#FFF9C4;color:#F57F17;">⚠️ ${counts.mixed} mixed</span>`;
+  if (counts.bad)   chips += `<span class="summary-chip" style="background:#FFCDD2;color:#B71C1C;">❌ ${counts.bad} bad</span>`;
+  if (counts.neutral) chips += `<span class="summary-chip" style="background:#E0E0E0;color:#424242;">➖ ${counts.neutral} neutral</span>`;
+
+  let cardsHtml = ingredients.map((ing, i) => {
+    const bgClass   = ing.rating==='good' ? 'good-bg' : ing.rating==='bad' ? 'bad-bg' : ing.rating==='mixed' ? 'warn-bg' : 'neut-bg';
+    const pillClass = ing.rating==='good' ? 'pill-good': ing.rating==='bad' ? 'pill-bad': ing.rating==='mixed' ? 'pill-warn': 'pill-neut';
+    const pillLabel = ing.rating==='good' ? '✓ Good'   : ing.rating==='bad' ? '✗ Bad'   : ing.rating==='mixed' ? '⚠ Mixed': '– Neutral';
+
+    const goodList = (ing.good_points||[]).map(p=>`<li>${escHtml(p)}</li>`).join('');
+    const badList  = (ing.bad_points||[]).map(p=>`<li>${escHtml(p)}</li>`).join('');
+
+    return `
+<div class="ingredient-card">
+  <div class="ing-header ${bgClass}" onclick="toggleCard(this)" id="hdr-${i}">
+    <span class="ing-badge">${escHtml(ing.emoji||'🔬')}</span>
+    <span>${escHtml(ing.name)}<span class="rating-pill ${pillClass}">${pillLabel}</span></span>
+    <span class="arrow">▼</span>
+  </div>
+  <div class="ing-body" id="body-${i}">
+    <p><em>${escHtml(ing.verdict||'')}</em></p>
+    ${goodList ? `<h4>✅ Benefits</h4><ul>${goodList}</ul>` : ''}
+    ${badList  ? `<h4>❌ Concerns</h4><ul>${badList}</ul>`  : ''}
+  </div>
+</div>`;
+  }).join('');
+
+  const summaryHtml = summary
+    ? `<div style="margin-top:10px;padding:10px;background:rgba(0,0,0,0.04);border-radius:8px;font-size:13px;line-height:1.55;"><strong>Overall:</strong> ${escHtml(summary)}</div>`
+    : '';
+
+  div.innerHTML = `<div class="bubble" style="max-width:92%;">
+    <div style="font-weight:700;margin-bottom:6px;">🔬 Ingredient Analysis</div>
+    <div class="summary-bar">${chips}</div>
+    ${cardsHtml}
+    ${summaryHtml}
+    <span class="time">${nowTime()}</span>
+  </div>`;
+
+  chat.appendChild(div);
+  scrollBottom();
+}
+
+function toggleCard(header) {
+  header.classList.toggle('open');
+  const idx  = header.id.split('-')[1];
+  const body = document.getElementById('body-' + idx);
+  body.classList.toggle('open');
+}
+
+// ── SYSTEM BUBBLE ──
+function addSystemBubble(msg) {
+  const chat = document.getElementById('chat');
+  const div  = document.createElement('div');
+  div.className = 'msg in';
+  div.innerHTML = `<div class="bubble">${msg}<span class="time">${nowTime()}</span></div>`;
+  chat.appendChild(div);
+  scrollBottom();
+}
+
+// ── LIGHTBOX ──
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+}
+document.getElementById('lightbox').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('lightbox')) closeLightbox();
+});
+
+// ── UTILS ──
+function scrollBottom() {
+  const c = document.getElementById('chat');
+  c.scrollTop = c.scrollHeight;
+}
+function nowTime() {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+function escHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;')
+    .replace(/\n/g,'<br>');
+}
+</script>
+</body>
+</html>
