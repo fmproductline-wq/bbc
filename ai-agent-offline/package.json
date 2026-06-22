@@ -86,7 +86,12 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "BestBrand AI Agent"
+      "shortcutName": "BestBrand AI Agent",
+      "include": "build/installer.nsh",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "displayLanguageSelector": false
     },
     "portable": {
       "artifactName": "BestBrand-AI-Agent-Portable.exe"

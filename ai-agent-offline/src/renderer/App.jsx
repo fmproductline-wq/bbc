@@ -1,45 +1,40 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import TitleBar from './components/TitleBar';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import ModelManager from './components/ModelManager';
 import Settings from './components/Settings';
-import SetupScreen from './components/SetupScreen';
+import FirstRunWizard from './components/FirstRunWizard';
 import { useStore } from './hooks/useStore';
 import { useOllama } from './hooks/useOllama';
 
 export default function App() {
-  const [view, setView] = useState('chat'); // 'chat' | 'models' | 'settings'
+  const [view, setView] = useState('chat');
   const [conversations, setConversations] = useStore('conversations', []);
   const [activeConvId, setActiveConvId] = useStore('activeConvId', null);
   const [selectedModel, setSelectedModel] = useStore('selectedModel', '');
+  const [setupDone, setSetupDone] = useStore('setupDone', false);
   const { status, models, checkStatus } = useOllama();
 
-  // Create initial conversation if none exist
   useEffect(() => {
     if (conversations.length === 0) {
       const id = crypto.randomUUID();
-      const first = { id, title: 'New Chat', messages: [], createdAt: Date.now() };
-      setConversations([first]);
+      setConversations([{ id, title: 'New Chat', messages: [], createdAt: Date.now() }]);
       setActiveConvId(id);
     } else if (!activeConvId) {
       setActiveConvId(conversations[0].id);
     }
   }, []);
 
-  // Auto-select first available model
   useEffect(() => {
-    if (!selectedModel && models.length > 0) {
-      setSelectedModel(models[0].name);
-    }
-  }, [models, selectedModel]);
+    if (!selectedModel && models.length > 0) setSelectedModel(models[0].name);
+  }, [models]);
 
   const activeConv = conversations.find(c => c.id === activeConvId) || null;
 
   function newConversation() {
     const id = crypto.randomUUID();
-    const conv = { id, title: 'New Chat', messages: [], createdAt: Date.now() };
-    setConversations(prev => [conv, ...prev]);
+    setConversations(prev => [{ id, title: 'New Chat', messages: [], createdAt: Date.now() }, ...prev]);
     setActiveConvId(id);
     setView('chat');
   }
@@ -48,14 +43,13 @@ export default function App() {
     setConversations(prev => {
       const next = prev.filter(c => c.id !== id);
       if (activeConvId === id) {
-        setActiveConvId(next[0]?.id || null);
         if (next.length === 0) {
           const newId = crypto.randomUUID();
           const fresh = { id: newId, title: 'New Chat', messages: [], createdAt: Date.now() };
-          setConversations([fresh]);
           setActiveConvId(newId);
           return [fresh];
         }
+        setActiveConvId(next[0].id);
       }
       return next;
     });
@@ -65,33 +59,45 @@ export default function App() {
     setConversations(prev => prev.map(c => c.id === id ? updater(c) : c));
   }
 
-  const showSetup = status === 'offline' && models.length === 0;
+  // Show first-run wizard if Ollama not ready and setup not completed
+  if (!setupDone || (status === 'offline' && models.length === 0 && !setupDone)) {
+    return (
+      <div className="flex flex-col h-screen bg-[#212121]">
+        <TitleBar minimal />
+        <FirstRunWizard
+          onComplete={() => {
+            setSetupDone(true);
+            checkStatus();
+          }}
+          onSkip={() => setSetupDone(true)}
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-screen bg-surface-900 select-none">
+    <div className="flex flex-col h-screen bg-[#212121] overflow-hidden">
       <TitleBar status={status} onCheckStatus={checkStatus} />
-
       <div className="flex flex-1 overflow-hidden">
         <Sidebar
           conversations={conversations}
           activeConvId={activeConvId}
-          onSelect={(id) => { setActiveConvId(id); setView('chat'); }}
+          onSelect={id => { setActiveConvId(id); setView('chat'); }}
           onNew={newConversation}
           onDelete={deleteConversation}
           view={view}
           onChangeView={setView}
+          selectedModel={selectedModel}
         />
-
-        <main className="flex-1 flex flex-col overflow-hidden">
-          {showSetup ? (
-            <SetupScreen onRetry={checkStatus} />
-          ) : view === 'chat' ? (
+        <main className="flex-1 flex flex-col overflow-hidden bg-[#212121]">
+          {view === 'chat' ? (
             <ChatView
               conversation={activeConv}
               model={selectedModel}
               models={models}
               onModelChange={setSelectedModel}
-              onUpdateConv={(updater) => activeConvId && updateConversation(activeConvId, updater)}
+              onUpdateConv={updater => activeConvId && updateConversation(activeConvId, updater)}
+              onNewChat={newConversation}
             />
           ) : view === 'models' ? (
             <ModelManager models={models} onRefresh={checkStatus} selectedModel={selectedModel} onSelectModel={setSelectedModel} />

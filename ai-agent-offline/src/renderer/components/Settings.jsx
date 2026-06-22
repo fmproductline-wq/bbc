@@ -6,131 +6,117 @@ const isElectron = typeof window !== 'undefined' && window.electronAPI;
 export default function Settings({ selectedModel, onModelChange, models }) {
   const [systemPrompt, setSystemPrompt] = useStore('systemPrompt', '');
   const [temperature, setTemperature] = useStore('temperature', 0.7);
-  const [theme, setTheme] = useStore('theme', 'dark');
   const [version, setVersion] = useState('');
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    if (isElectron) {
-      window.electronAPI.getVersion().then(setVersion);
-    }
+    if (isElectron) window.electronAPI.getVersion().then(setVersion);
   }, []);
 
-  function save() {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  }
+  function save() { setSaved(true); setTimeout(() => setSaved(false), 2000); }
 
   return (
     <div className="flex-1 overflow-y-auto p-6">
       <div className="max-w-xl mx-auto">
-        <h1 className="text-xl font-semibold text-white mb-1">Settings</h1>
-        <p className="text-sm text-zinc-500 mb-8">Customize your AI agent experience.</p>
+        <h1 className="text-xl font-bold text-white mb-1">Settings</h1>
+        <p className="text-sm text-[#666] mb-8">Customize your AI assistant.</p>
 
-        <Section title="Model">
-          <label className="block text-xs text-zinc-500 mb-1.5">Active Model</label>
+        <Sect title="Model">
+          <label className="block text-xs text-[#666] mb-2">Active Model</label>
           <select
             value={selectedModel}
             onChange={e => onModelChange(e.target.value)}
-            className="w-full bg-surface-700 border border-surface-500 focus:border-brand-500 text-white text-sm rounded-xl px-4 py-2.5 outline-none transition-colors"
+            className="w-full bg-white/5 border border-white/10 focus:border-white/25 text-white text-sm rounded-2xl px-4 py-3 outline-none transition-colors"
           >
             {models.length === 0 && <option value="">No models installed</option>}
-            {models.map(m => <option key={m.name} value={m.name} className="bg-surface-700">{m.name}</option>)}
+            {models.map(m => <option key={m.name} value={m.name} className="bg-[#2a2a2a]">{m.name}</option>)}
           </select>
-        </Section>
+        </Sect>
 
-        <Section title="System Prompt">
-          <label className="block text-xs text-zinc-500 mb-1.5">
-            Custom instructions given to the AI at the start of every conversation
-          </label>
+        <Sect title="Instructions">
+          <label className="block text-xs text-[#666] mb-2">System prompt — given to the AI before every conversation</label>
           <textarea
             value={systemPrompt}
             onChange={e => setSystemPrompt(e.target.value)}
-            placeholder="e.g. You are a coding assistant. Always write clean, commented code."
+            placeholder="e.g. You are a senior software engineer. Always explain your reasoning."
             rows={4}
-            className="w-full bg-surface-700 border border-surface-500 focus:border-brand-500 text-white placeholder-zinc-600 text-sm rounded-xl px-4 py-3 outline-none transition-colors resize-none"
+            className="w-full bg-white/5 border border-white/10 focus:border-white/25 text-white placeholder-[#444] text-sm rounded-2xl px-4 py-3 outline-none transition-colors resize-none leading-relaxed"
           />
-          <p className="text-xs text-zinc-600 mt-1">Leave blank to use the default assistant persona.</p>
-        </Section>
+          <p className="text-xs text-[#444] mt-1.5">Leave blank to use the default assistant persona.</p>
+        </Sect>
 
-        <Section title="Generation">
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs text-zinc-500">Temperature: {temperature}</label>
-            <span className="text-xs text-zinc-600">{temperature < 0.4 ? 'More focused' : temperature > 0.8 ? 'More creative' : 'Balanced'}</span>
+        <Sect title="Creativity">
+          <div className="flex items-center justify-between mb-3 text-xs">
+            <span className="text-[#666]">Temperature · controls how creative responses are</span>
+            <span className="text-white font-mono bg-white/8 px-2 py-0.5 rounded-lg">{temperature}</span>
           </div>
           <input
-            type="range"
-            min={0}
-            max={2}
-            step={0.1}
+            type="range" min={0} max={2} step={0.05}
             value={temperature}
             onChange={e => setTemperature(parseFloat(e.target.value))}
-            className="w-full accent-brand-500"
+            className="w-full accent-violet-500 mb-2"
           />
-          <div className="flex justify-between text-xs text-zinc-700 mt-1">
-            <span>0 — Precise</span>
-            <span>1 — Default</span>
-            <span>2 — Wild</span>
+          <div className="flex justify-between text-[10px] text-[#444]">
+            <span>Focused / Precise</span>
+            <span>Balanced</span>
+            <span>Creative / Random</span>
           </div>
-        </Section>
+        </Sect>
 
-        <Section title="Data & Privacy">
-          <div className="space-y-2">
-            <PrivacyBadge icon="🔒" label="100% Offline" desc="No internet connection used during chat" />
-            <PrivacyBadge icon="🚫" label="No Tracking" desc="Zero analytics, telemetry, or data collection" />
-            <PrivacyBadge icon="💾" label="Local Storage Only" desc="Conversations saved on your device only" />
-            <PrivacyBadge icon="🤖" label="Open Source Models" desc="Free, open-source AI models via Ollama" />
+        <Sect title="Privacy">
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { icon: '🔒', t: '100% Offline', d: 'No internet needed after setup' },
+              { icon: '🚫', t: 'Zero Tracking', d: 'No analytics or telemetry' },
+              { icon: '💾', t: 'Local Storage', d: 'Chats saved on your device only' },
+              { icon: '🤖', t: 'Open Source', d: 'Free AI models, no subscriptions' },
+            ].map(f => (
+              <div key={f.t} className="flex items-start gap-2.5 px-3.5 py-3 bg-white/4 border border-white/8 rounded-2xl">
+                <span className="text-base">{f.icon}</span>
+                <div>
+                  <p className="text-xs font-semibold text-white">{f.t}</p>
+                  <p className="text-[11px] text-[#555] leading-snug">{f.d}</p>
+                </div>
+              </div>
+            ))}
           </div>
-        </Section>
+        </Sect>
 
         <div className="flex items-center justify-between">
           <button
             onClick={save}
-            className="px-6 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium transition-colors"
+            className={`px-6 py-2.5 rounded-2xl font-medium text-sm transition-all ${
+              saved
+                ? 'bg-green-600/20 text-green-400 border border-green-600/30'
+                : 'bg-violet-600 hover:bg-violet-500 text-white'
+            }`}
           >
-            {saved ? '✓ Saved' : 'Save Settings'}
+            {saved ? '✓ Saved' : 'Save'}
           </button>
-
-          {version && (
-            <span className="text-xs text-zinc-700">BestBrand AI v{version}</span>
-          )}
+          {version && <span className="text-xs text-[#444]">v{version}</span>}
         </div>
 
         {isElectron && (
-          <Section title="Files">
+          <Sect title="Files">
             <button
               onClick={() => window.electronAPI.openModelsFolder()}
-              className="flex items-center gap-2 text-sm text-zinc-400 hover:text-white transition-colors"
+              className="flex items-center gap-2 text-sm text-[#666] hover:text-[#aaa] transition-colors"
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-              </svg>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
               Open Models Folder
             </button>
-          </Section>
+          </Sect>
         )}
       </div>
     </div>
   );
 }
 
-function Section({ title, children }) {
+function Sect({ title, children }) {
   return (
     <div className="mb-8">
-      <h2 className="text-sm font-semibold text-zinc-300 mb-3">{title}</h2>
+      <h2 className="text-sm font-semibold text-[#888] mb-3">{title}</h2>
       {children}
-    </div>
-  );
-}
-
-function PrivacyBadge({ icon, label, desc }) {
-  return (
-    <div className="flex items-center gap-3 px-3 py-2.5 bg-surface-700 border border-surface-500 rounded-lg">
-      <span className="text-base">{icon}</span>
-      <div>
-        <p className="text-xs font-medium text-white">{label}</p>
-        <p className="text-xs text-zinc-500">{desc}</p>
-      </div>
     </div>
   );
 }
