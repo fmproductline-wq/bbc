@@ -98,6 +98,7 @@ class MainApp(ctk.CTk):
             ("PnL",          "💰"),
             ("Backtest",     "📊"),
             ("Bug Checker",  "🔍"),
+            ("Marketing",    "📣"),
             ("Settings",     "⚙️"),
         ]
         for name, icon in nav_items:
@@ -184,6 +185,7 @@ class MainApp(ctk.CTk):
         from ui.tabs.pnl_dashboard      import PnLDashboardTab
         from ui.tabs.backtest           import BacktestTab
         from ui.tabs.bug_checker        import BugCheckerTab
+        from ui.tabs.marketing          import MarketingTab
         from ui.tabs.settings           import SettingsTab
 
         tab_classes = {
@@ -194,6 +196,7 @@ class MainApp(ctk.CTk):
             "PnL":         PnLDashboardTab,
             "Backtest":    BacktestTab,
             "Bug Checker": BugCheckerTab,
+            "Marketing":   MarketingTab,
             "Settings":    SettingsTab,
         }
         for name, cls in tab_classes.items():
