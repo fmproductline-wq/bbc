@@ -204,7 +204,7 @@ export default function App() {
     for (const other of profiles) {
       if (existingPartners.has(other.id)) continue;
       const compat = calculateCompatibility(user.answers, other);
-      if (compat.score < 50) continue;
+      if (compat.score < 75) continue;
 
       const convId = uuidv4();
       const systemMsg: Message = {

@@ -160,9 +160,9 @@ export const SettingsScreen: React.FC<Props> = ({
                 <p className="text-match-text text-sm font-medium">Minimum compatibility</p>
                 <p className="text-match-muted text-xs">Only notify when score is above this</p>
               </div>
-              <span className="text-ember font-bold text-lg">60%</span>
+              <span className="text-ember font-bold text-lg">75%</span>
             </div>
-            <input type="range" min="30" max="90" defaultValue="60" className="w-full accent-ember" />
+            <input type="range" min="50" max="95" defaultValue="75" className="w-full accent-ember" />
           </div>
         </section>
 
