@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { UserProfile, PrivacyLevel } from "../types";
+import { isAdminUnlocked } from "./AdminGate";
 
 interface Props {
   profile: UserProfile;
@@ -7,6 +8,7 @@ interface Props {
   onUpdatePrivacy: (updated: UserProfile["privacy"]) => void;
   onDeleteAccount: () => void;
   onOpenEditor: () => void;
+  onOpenMyQuestions: () => void;
 }
 
 const LEVEL_LABELS: Record<PrivacyLevel, string> = {
@@ -58,6 +60,7 @@ export const SettingsScreen: React.FC<Props> = ({
   onUpdatePrivacy,
   onDeleteAccount,
   onOpenEditor,
+  onOpenMyQuestions,
 }) => {
   const [privacy, setPrivacy] = useState({ ...profile.privacy });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -163,16 +166,52 @@ export const SettingsScreen: React.FC<Props> = ({
           </div>
         </section>
 
-        {/* Questionnaire editor */}
+        {/* User — My questions */}
         <section>
-          <p className="text-match-muted text-xs font-semibold uppercase tracking-wider mb-3">Questionnaire</p>
+          <p className="text-match-muted text-xs font-semibold uppercase tracking-wider mb-3">My questions</p>
           <button
-            onClick={onOpenEditor}
+            onClick={onOpenMyQuestions}
             className="w-full flex items-center justify-between px-4 py-4 bg-match-card border border-match-border rounded-2xl transition-all active:scale-95"
           >
             <div className="text-left">
-              <p className="text-match-text text-sm font-semibold">Edit questions</p>
-              <p className="text-match-muted text-xs mt-0.5">Add, remove, or reorder the questions all users answer</p>
+              <p className="text-match-text text-sm font-semibold">Add personal questions</p>
+              <p className="text-match-muted text-xs mt-0.5">
+                Write your own Q&amp;As that matches can read on your profile
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+              {profile.personalQuestions?.length > 0 && (
+                <span
+                  className="text-xs font-bold px-2 py-0.5 rounded-full"
+                  style={{ background: "#FF450022", color: "#FF6A33" }}
+                >
+                  {profile.personalQuestions.length}
+                </span>
+              )}
+              <span className="text-match-muted text-lg">›</span>
+            </div>
+          </button>
+        </section>
+
+        {/* Admin — Questionnaire editor */}
+        <section>
+          <p className="text-match-muted text-xs font-semibold uppercase tracking-wider mb-3">Admin</p>
+          <button
+            onClick={onOpenEditor}
+            className="w-full flex items-center justify-between px-4 py-4 bg-match-card border border-match-border rounded-2xl transition-all active:scale-95"
+            style={{ borderColor: "#FF450055" }}
+          >
+            <div className="text-left">
+              <div className="flex items-center gap-2 mb-0.5">
+                <p className="text-ember text-sm font-semibold">Questionnaire editor</p>
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full font-bold"
+                  style={{ background: "#FF450022", color: "#FF4500" }}
+                >
+                  {isAdminUnlocked() ? "Unlocked" : "PIN required"}
+                </span>
+              </div>
+              <p className="text-match-muted text-xs">Add, remove, or reorder the questions every user must answer</p>
             </div>
             <span className="text-match-muted text-lg ml-3">›</span>
           </button>

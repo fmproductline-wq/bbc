@@ -5,12 +5,20 @@ export interface Answer {
   value: string | string[] | number;
 }
 
+export interface PersonalQuestion {
+  id: string;
+  text: string;
+  answer: string;
+  isPublic: boolean;
+}
+
 export interface UserProfile {
   id: string;
-  qrCode: string; // unique identifier used as QR data
-  displayName: string; // nickname only, no real name
+  qrCode: string;
+  displayName: string;
   bio: string;
   answers: Answer[];
+  personalQuestions: PersonalQuestion[];
   privacy: {
     bio: PrivacyLevel;
     answers: PrivacyLevel;
@@ -24,7 +32,7 @@ export interface UserProfile {
 
 export interface CompatibilityScore {
   userId: string;
-  score: number; // 0-100
+  score: number;
   matchedCategories: string[];
   sharedValues: string[];
 }
@@ -69,7 +77,9 @@ export type Screen =
   | "settings"
   | "notifications"
   | "match_detail"
-  | "questionnaire_editor";
+  | "questionnaire_editor"
+  | "admin_gate"
+  | "my_questions";
 
 export interface Question {
   id: string;
@@ -79,5 +89,5 @@ export interface Question {
   options?: string[];
   scaleMin?: string;
   scaleMax?: string;
-  weight: number; // importance for matching 1-3
+  weight: number;
 }

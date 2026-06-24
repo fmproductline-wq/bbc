@@ -25,6 +25,7 @@ export const Onboarding: React.FC<Props> = ({ onComplete }) => {
       displayName: displayName.trim(),
       bio: bio.trim(),
       answers: [],
+      personalQuestions: [],
       privacy: {
         bio: "public",
         answers: "matches_only",

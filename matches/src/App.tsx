@@ -17,6 +17,8 @@ import { ProfileScreen } from "./components/ProfileScreen";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { NotificationsScreen } from "./components/NotificationsScreen";
 import { QuestionnaireEditor, loadQuestions } from "./components/QuestionnaireEditor";
+import { AdminGate, isAdminUnlocked } from "./components/AdminGate";
+import { MyQuestions } from "./components/MyQuestions";
 import { calculateCompatibility } from "./hooks/useCompatibility";
 
 // Simulated other users the bot will match against
@@ -26,6 +28,7 @@ const SIMULATED_PROFILES: Omit<UserProfile, "id" | "qrCode" | "createdAt">[] = [
     bio: "Lover of late nights and good conversations.",
     isOnline: true,
     lastSeen: Date.now(),
+    personalQuestions: [],
     privacy: { bio: "public", answers: "matches_only", onlineStatus: "public", lastSeen: "public" },
     answers: [
       { questionId: "ls_1", value: "Cozy at home" },
@@ -55,6 +58,7 @@ const SIMULATED_PROFILES: Omit<UserProfile, "id" | "qrCode" | "createdAt">[] = [
     bio: "Always chasing the next adventure.",
     isOnline: false,
     lastSeen: Date.now() - 3600000,
+    personalQuestions: [],
     privacy: { bio: "public", answers: "public", onlineStatus: "public", lastSeen: "public" },
     answers: [
       { questionId: "ls_1", value: "Outdoors & adventure" },
@@ -84,6 +88,7 @@ const SIMULATED_PROFILES: Omit<UserProfile, "id" | "qrCode" | "createdAt">[] = [
     bio: "Art, coffee, and meaningful silences.",
     isOnline: true,
     lastSeen: Date.now(),
+    personalQuestions: [],
     privacy: { bio: "public", answers: "matches_only", onlineStatus: "matches_only", lastSeen: "private" },
     answers: [
       { questionId: "ls_1", value: "Exploring the city" },
@@ -414,6 +419,7 @@ export default function App() {
         profile={currentUser!}
         onBack={() => setScreen("home")}
         onEditQuestionnaire={() => setEditingAnswers(true)}
+        onOpenMyQuestions={() => setScreen("my_questions")}
       />
     );
   }
@@ -431,13 +437,38 @@ export default function App() {
           setState({ currentUser: null, conversations: [], notifications: [], otherProfiles: [] });
           setScreen("onboarding");
         }}
-        onOpenEditor={() => setScreen("questionnaire_editor")}
+        onOpenEditor={() => setScreen("admin_gate")}
+        onOpenMyQuestions={() => setScreen("my_questions")}
+      />
+    );
+  }
+
+  if (screen === "admin_gate") {
+    if (isAdminUnlocked()) {
+      return <QuestionnaireEditor onBack={() => setScreen("settings")} />;
+    }
+    return (
+      <AdminGate
+        onUnlocked={() => setScreen("questionnaire_editor")}
+        onBack={() => setScreen("settings")}
       />
     );
   }
 
   if (screen === "questionnaire_editor") {
     return <QuestionnaireEditor onBack={() => setScreen("settings")} />;
+  }
+
+  if (screen === "my_questions") {
+    return (
+      <MyQuestions
+        questions={currentUser?.personalQuestions || []}
+        onSave={(personalQuestions) => {
+          updateState({ currentUser: { ...currentUser!, personalQuestions } });
+        }}
+        onBack={() => setScreen("settings")}
+      />
+    );
   }
 
   if (screen === "notifications") {

@@ -1,16 +1,19 @@
 import React from "react";
 import { UserProfile } from "../types";
 import { QRAvatar } from "./QRAvatar";
-import { QUESTIONS } from "../data/questions";
+import { loadQuestions } from "./QuestionnaireEditor";
 import { getCompatibilityLabel } from "../hooks/useCompatibility";
+
+const QUESTIONS = loadQuestions();
 
 interface Props {
   profile: UserProfile;
+  onOpenMyQuestions: () => void;
   onBack: () => void;
   onEditQuestionnaire: () => void;
 }
 
-export const ProfileScreen: React.FC<Props> = ({ profile, onBack, onEditQuestionnaire }) => {
+export const ProfileScreen: React.FC<Props> = ({ profile, onBack, onEditQuestionnaire, onOpenMyQuestions }) => {
   const answered = profile.answers.filter((a) => a.value !== "").length;
   const completionPct = Math.round((answered / QUESTIONS.length) * 100);
 
@@ -85,6 +88,39 @@ export const ProfileScreen: React.FC<Props> = ({ profile, onBack, onEditQuestion
             )}
           </div>
         )}
+
+        {/* Personal questions */}
+        <div className="space-y-3 pb-6">
+          <div className="flex items-center justify-between">
+            <p className="text-match-muted text-xs font-semibold uppercase tracking-wider">My questions</p>
+            <button onClick={onOpenMyQuestions} className="text-ember text-xs font-semibold">
+              {(profile.personalQuestions?.length ?? 0) > 0 ? "Edit" : "+ Add"} →
+            </button>
+          </div>
+          {(profile.personalQuestions?.length ?? 0) === 0 ? (
+            <button
+              onClick={onOpenMyQuestions}
+              className="w-full py-4 rounded-2xl border border-dashed text-sm text-match-muted transition-all hover:border-ember hover:text-ember"
+              style={{ borderColor: "#2a2a3e" }}
+            >
+              + Add personal questions for matches to read
+            </button>
+          ) : (
+            profile.personalQuestions.map((pq) => (
+              <div key={pq.id} className="bg-match-card border border-match-border rounded-xl px-4 py-3 space-y-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-match-muted text-xs flex-1">{pq.text}</p>
+                  {!pq.isPublic && (
+                    <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: "#2a2a3e", color: "#8888aa" }}>
+                      Hidden
+                    </span>
+                  )}
+                </div>
+                <p className="text-match-text text-sm font-medium leading-snug">{pq.answer}</p>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );
