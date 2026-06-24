@@ -110,6 +110,20 @@ export const Questionnaire: React.FC<Props> = ({ existingAnswers = [], onComplet
           <h2 className="text-match-text text-xl font-bold leading-tight">{q.text}</h2>
         </div>
 
+        {/* Media attached to question */}
+        {q.media?.type === "image" && (
+          <img
+            src={q.media.dataUrl}
+            alt="Question media"
+            className="w-full rounded-2xl object-cover max-h-48 mb-4"
+          />
+        )}
+        {q.media?.type === "audio" && (
+          <div className="mb-4">
+            <audio controls className="w-full" src={q.media.dataUrl} />
+          </div>
+        )}
+
         {/* Single choice */}
         {q.type === "single" && (
           <div className="space-y-2.5">

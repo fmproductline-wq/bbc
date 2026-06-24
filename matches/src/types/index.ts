@@ -90,4 +90,9 @@ export interface Question {
   scaleMin?: string;
   scaleMax?: string;
   weight: number;
+  media?: {
+    type: "image" | "audio";
+    dataUrl: string; // base64 data URL
+    name: string;
+  };
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import { Question } from "../types";
 import { QUESTIONS as DEFAULT_QUESTIONS } from "../data/questions";
 import { v4 as uuidv4 } from "uuid";
@@ -27,12 +27,7 @@ const QUESTION_TYPES: { value: Question["type"]; label: string; desc: string }[]
   { value: "text", label: "Free text", desc: "Open answer" },
 ];
 
-const WEIGHT_LABELS: Record<number, string> = {
-  1: "Low",
-  2: "Medium",
-  3: "High",
-};
-
+const WEIGHT_LABELS: Record<number, string> = { 1: "Low", 2: "Medium", 3: "High" };
 const DEFAULT_CATEGORIES = ["Lifestyle", "Values", "Personality", "Interests", "Relationship", "Communication"];
 
 interface Props {
@@ -50,6 +45,136 @@ function blankQuestion(): Question {
   };
 }
 
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ── Media picker sheet ───────────────────────────────────────────────
+interface MediaPickerProps {
+  current?: Question["media"];
+  onSelect: (media: Question["media"]) => void;
+  onClose: () => void;
+}
+
+const MediaPicker: React.FC<MediaPickerProps> = ({ current, onSelect, onClose }) => {
+  const imageRef = useRef<HTMLInputElement>(null);
+  const audioRef = useRef<HTMLInputElement>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleFile = async (file: File, type: "image" | "audio") => {
+    setLoading(true);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      onSelect({ type, dataUrl, name: file.name });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="absolute inset-0 bg-black/70 flex items-end z-50" onClick={onClose}>
+      <div
+        className="bg-match-surface rounded-t-3xl px-6 pt-5 pb-10 w-full space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="w-10 h-1 bg-match-border rounded-full mx-auto mb-3" />
+        <p className="text-match-text font-bold text-base text-center mb-4">Add media to question</p>
+
+        {/* Current media preview */}
+        {current && (
+          <div className="bg-match-card border border-match-border rounded-2xl p-3 flex items-center gap-3 mb-2">
+            <span className="text-2xl">{current.type === "image" ? "🖼️" : "🎵"}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-match-text text-sm font-medium truncate">{current.name}</p>
+              <p className="text-match-muted text-xs">{current.type === "image" ? "Image attached" : "Audio attached"}</p>
+            </div>
+            <button
+              onClick={() => onSelect(undefined)}
+              className="text-red-400 text-xs font-semibold px-3 py-1.5 rounded-xl border border-red-900"
+              style={{ background: "#1a0808" }}
+            >
+              Remove
+            </button>
+          </div>
+        )}
+
+        {/* Image preview */}
+        {current?.type === "image" && (
+          <img
+            src={current.dataUrl}
+            alt="Question media"
+            className="w-full rounded-2xl object-cover max-h-48"
+          />
+        )}
+
+        {/* Audio preview */}
+        {current?.type === "audio" && (
+          <audio controls className="w-full" src={current.dataUrl} />
+        )}
+
+        {/* Pick buttons */}
+        <button
+          onClick={() => imageRef.current?.click()}
+          disabled={loading}
+          className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl border border-match-border bg-match-card transition-all active:scale-95"
+        >
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl flex-shrink-0" style={{ background: "#FF450020" }}>
+            🖼️
+          </div>
+          <div className="text-left">
+            <p className="text-match-text text-sm font-semibold">Add image</p>
+            <p className="text-match-muted text-xs">JPG, PNG, GIF, WebP</p>
+          </div>
+        </button>
+
+        <button
+          onClick={() => audioRef.current?.click()}
+          disabled={loading}
+          className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl border border-match-border bg-match-card transition-all active:scale-95"
+        >
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl flex-shrink-0" style={{ background: "#FF450020" }}>
+            🎵
+          </div>
+          <div className="text-left">
+            <p className="text-match-text text-sm font-semibold">Add audio</p>
+            <p className="text-match-muted text-xs">MP3, WAV, OGG, M4A</p>
+          </div>
+        </button>
+
+        {loading && (
+          <p className="text-ember text-sm text-center animate-pulse">Loading file…</p>
+        )}
+
+        <button onClick={onClose} className="w-full py-3 text-match-muted text-sm">
+          Cancel
+        </button>
+
+        {/* Hidden file inputs */}
+        <input
+          ref={imageRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f, "image"); }}
+        />
+        <input
+          ref={audioRef}
+          type="file"
+          accept="audio/*"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f, "audio"); }}
+        />
+      </div>
+    </div>
+  );
+};
+
+// ── Main editor ─────────────────────────────────────────────────────
 export const QuestionnaireEditor: React.FC<Props> = ({ onBack }) => {
   const [questions, setQuestions] = useState<Question[]>(loadQuestions);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -59,6 +184,7 @@ export const QuestionnaireEditor: React.FC<Props> = ({ onBack }) => {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [customCategory, setCustomCategory] = useState("");
+  const [showMediaPicker, setShowMediaPicker] = useState(false);
 
   const allCategories = ["All", ...Array.from(new Set([...DEFAULT_CATEGORIES, ...questions.map((q) => q.category)]))];
   const filtered = filterCategory === "All" ? questions : questions.filter((q) => q.category === filterCategory);
@@ -69,33 +195,26 @@ export const QuestionnaireEditor: React.FC<Props> = ({ onBack }) => {
     setIsNew(isNewQ);
   };
 
-  const startNew = () => {
-    const q = blankQuestion();
-    startEdit(q, true);
-  };
+  const startNew = () => { startEdit(blankQuestion(), true); };
 
   const cancelEdit = () => {
     setDraft(null);
     setEditingId(null);
     setIsNew(false);
+    setShowMediaPicker(false);
   };
 
   const saveDraft = () => {
     if (!draft) return;
     if (!draft.text.trim()) return;
     if ((draft.type === "single" || draft.type === "multi") && draft.options!.filter((o) => o.trim()).length < 2) return;
-
     const cleanDraft = {
       ...draft,
       text: draft.text.trim(),
       options: draft.options?.filter((o) => o.trim()).map((o) => o.trim()),
     };
-
-    if (isNew) {
-      setQuestions((prev) => [...prev, cleanDraft]);
-    } else {
-      setQuestions((prev) => prev.map((q) => (q.id === cleanDraft.id ? cleanDraft : q)));
-    }
+    if (isNew) setQuestions((prev) => [...prev, cleanDraft]);
+    else setQuestions((prev) => prev.map((q) => (q.id === cleanDraft.id ? cleanDraft : q)));
     cancelEdit();
   };
 
@@ -138,9 +257,7 @@ export const QuestionnaireEditor: React.FC<Props> = ({ onBack }) => {
     });
   };
 
-  const addOption = () => {
-    setDraft((prev) => prev ? { ...prev, options: [...(prev.options || []), ""] } : prev);
-  };
+  const addOption = () => setDraft((prev) => prev ? { ...prev, options: [...(prev.options || []), ""] } : prev);
 
   const removeOption = (idx: number) => {
     setDraft((prev) => {
@@ -160,7 +277,7 @@ export const QuestionnaireEditor: React.FC<Props> = ({ onBack }) => {
     const categoryOptions = [...new Set([...DEFAULT_CATEGORIES, draft.category])].filter(Boolean);
 
     return (
-      <div className="flex flex-col h-full bg-match-bg">
+      <div className="flex flex-col h-full bg-match-bg relative">
         {/* Header */}
         <div className="px-4 pt-12 pb-4 flex items-center gap-3" style={{ borderBottom: "1px solid #2a2a3e" }}>
           <button onClick={cancelEdit} className="text-match-muted text-2xl w-8">✕</button>
@@ -188,6 +305,71 @@ export const QuestionnaireEditor: React.FC<Props> = ({ onBack }) => {
               maxLength={200}
             />
             <p className="text-match-muted text-xs text-right">{draft.text.length}/200</p>
+          </div>
+
+          {/* ── Media attachment ── */}
+          <div className="space-y-2">
+            <label className="text-match-muted text-xs font-semibold uppercase tracking-wider">
+              Media (optional)
+            </label>
+
+            {/* Preview if media already attached */}
+            {draft.media ? (
+              <div className="space-y-2">
+                {draft.media.type === "image" && (
+                  <img
+                    src={draft.media.dataUrl}
+                    alt="Question media"
+                    className="w-full rounded-2xl object-cover max-h-48"
+                  />
+                )}
+                {draft.media.type === "audio" && (
+                  <audio controls className="w-full" src={draft.media.dataUrl} />
+                )}
+                <div className="flex gap-2">
+                  <div className="flex-1 flex items-center gap-2 bg-match-card border border-match-border rounded-xl px-3 py-2.5">
+                    <span className="text-base">{draft.media.type === "image" ? "🖼️" : "🎵"}</span>
+                    <span className="text-match-text text-xs truncate">{draft.media.name}</span>
+                  </div>
+                  <button
+                    onClick={() => setShowMediaPicker(true)}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold border border-match-border text-match-muted"
+                  >
+                    Change
+                  </button>
+                  <button
+                    onClick={() => setDraft((p) => p ? { ...p, media: undefined } : p)}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold text-red-400 border border-red-900"
+                    style={{ background: "#1a0808" }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* + Add media button */
+              <button
+                onClick={() => setShowMediaPicker(true)}
+                className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl border-2 border-dashed transition-all active:scale-95 group"
+                style={{ borderColor: "#2a2a3e" }}
+              >
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0 transition-colors"
+                  style={{ background: "#FF450022" }}
+                >
+                  <span
+                    className="font-bold leading-none"
+                    style={{ color: "#FF4500", fontSize: 22 }}
+                  >
+                    +
+                  </span>
+                </div>
+                <div className="text-left">
+                  <p className="text-match-text text-sm font-semibold">Add image or audio</p>
+                  <p className="text-match-muted text-xs">Attach a photo or sound clip to this question</p>
+                </div>
+              </button>
+            )}
           </div>
 
           {/* Category */}
@@ -229,7 +411,7 @@ export const QuestionnaireEditor: React.FC<Props> = ({ onBack }) => {
                     setCustomCategory("");
                   }
                 }}
-                className="px-3 py-2 rounded-xl text-sm font-semibold text-white"
+                className="px-3 py-2 rounded-xl text-sm font-semibold"
                 style={{ background: "#FF450033", color: "#FF4500" }}
               >
                 Add
@@ -355,7 +537,7 @@ export const QuestionnaireEditor: React.FC<Props> = ({ onBack }) => {
           {/* Matching weight */}
           <div className="space-y-2">
             <label className="text-match-muted text-xs font-semibold uppercase tracking-wider">
-              Matching weight — how much this affects compatibility
+              Matching weight
             </label>
             <div className="grid grid-cols-3 gap-2">
               {([1, 2, 3] as const).map((w) => (
@@ -375,21 +557,31 @@ export const QuestionnaireEditor: React.FC<Props> = ({ onBack }) => {
             </div>
           </div>
 
-          {/* Validation hint */}
           {!canSave && draft.text.trim() && needsOptions && !validOptions && (
             <p className="text-red-400 text-xs bg-red-950/30 border border-red-900 rounded-xl px-3 py-2">
               Add at least 2 answer options to save.
             </p>
           )}
         </div>
+
+        {/* Media picker sheet */}
+        {showMediaPicker && (
+          <MediaPicker
+            current={draft.media}
+            onSelect={(media) => {
+              setDraft((p) => p ? { ...p, media } : p);
+              setShowMediaPicker(false);
+            }}
+            onClose={() => setShowMediaPicker(false)}
+          />
+        )}
       </div>
     );
   }
 
   // ── Question list ────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full bg-match-bg">
-      {/* Header */}
+    <div className="flex flex-col h-full bg-match-bg relative">
       <div className="px-4 pt-12 pb-3 flex items-center gap-3" style={{ borderBottom: "1px solid #2a2a3e" }}>
         <button onClick={onBack} className="text-match-muted text-2xl w-8">‹</button>
         <div className="flex-1 min-w-0">
@@ -405,7 +597,6 @@ export const QuestionnaireEditor: React.FC<Props> = ({ onBack }) => {
         </button>
       </div>
 
-      {/* Category filter */}
       <div className="px-4 py-3 overflow-x-auto flex gap-2 no-scrollbar" style={{ borderBottom: "1px solid #2a2a3e" }}>
         {allCategories.map((cat) => (
           <button
@@ -423,92 +614,70 @@ export const QuestionnaireEditor: React.FC<Props> = ({ onBack }) => {
         ))}
       </div>
 
-      {/* Info banner */}
       <div className="mx-4 mt-3 px-4 py-3 rounded-2xl flex items-start gap-2" style={{ background: "#FF450012", border: "1px solid #FF450033" }}>
         <span className="text-base flex-shrink-0 mt-0.5">ℹ️</span>
         <p className="text-match-muted text-xs leading-relaxed">
-          Every new user will answer these questions before matching. Changing questions after users have answered may reduce match quality.
-          Click <strong className="text-match-text">Save all</strong> to apply your changes.
+          Every new user answers these questions. You can attach an image or audio to any question to give it more context.
+          Click <strong className="text-match-text">Save all</strong> to apply changes.
         </p>
       </div>
 
-      {/* Questions list */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-        {filtered.map((q, visIdx) => {
+        {filtered.map((q) => {
           const globalIdx = questions.findIndex((x) => x.id === q.id);
           return (
-            <div
-              key={q.id}
-              className="bg-match-card border border-match-border rounded-2xl overflow-hidden"
-            >
-              <div className="flex items-start gap-3 px-4 py-3">
-                {/* Drag handle / order */}
-                <div className="flex flex-col items-center gap-1 pt-1 flex-shrink-0">
-                  <button
-                    onClick={() => moveQuestion(q.id, -1)}
-                    disabled={globalIdx === 0}
-                    className="text-match-muted disabled:opacity-20 text-xs leading-none"
-                  >
-                    ▲
-                  </button>
-                  <span className="text-match-muted text-xs font-mono">{globalIdx + 1}</span>
-                  <button
-                    onClick={() => moveQuestion(q.id, 1)}
-                    disabled={globalIdx === questions.length - 1}
-                    className="text-match-muted disabled:opacity-20 text-xs leading-none"
-                  >
-                    ▼
-                  </button>
+            <div key={q.id} className="bg-match-card border border-match-border rounded-2xl overflow-hidden">
+              {/* Media preview on card */}
+              {q.media?.type === "image" && (
+                <img src={q.media.dataUrl} alt="" className="w-full object-cover max-h-32" />
+              )}
+              {q.media?.type === "audio" && (
+                <div className="px-4 pt-3">
+                  <audio controls className="w-full" src={q.media.dataUrl} />
                 </div>
+              )}
 
-                {/* Content */}
+              <div className="flex items-start gap-3 px-4 py-3">
+                <div className="flex flex-col items-center gap-1 pt-1 flex-shrink-0">
+                  <button onClick={() => moveQuestion(q.id, -1)} disabled={globalIdx === 0} className="text-match-muted disabled:opacity-20 text-xs leading-none">▲</button>
+                  <span className="text-match-muted text-xs font-mono">{globalIdx + 1}</span>
+                  <button onClick={() => moveQuestion(q.id, 1)} disabled={globalIdx === questions.length - 1} className="text-match-muted disabled:opacity-20 text-xs leading-none">▼</button>
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <span
-                      className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                      style={{ background: "#FF450020", color: "#FF6A33" }}
-                    >
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "#FF450020", color: "#FF6A33" }}>
                       {q.category}
                     </span>
                     <span className="text-xs text-match-muted border border-match-border rounded-full px-2 py-0.5">
                       {QUESTION_TYPES.find((t) => t.value === q.type)?.label}
                     </span>
-                    <span
-                      className="text-xs px-2 py-0.5 rounded-full"
-                      style={{
-                        background: q.weight === 3 ? "#FF450022" : q.weight === 2 ? "#FF8C0022" : "#2a2a3e",
-                        color: q.weight === 3 ? "#FF4500" : q.weight === 2 ? "#FF8C00" : "#8888aa",
-                      }}
-                    >
+                    <span className="text-xs px-2 py-0.5 rounded-full" style={{
+                      background: q.weight === 3 ? "#FF450022" : q.weight === 2 ? "#FF8C0022" : "#2a2a3e",
+                      color: q.weight === 3 ? "#FF4500" : q.weight === 2 ? "#FF8C00" : "#8888aa",
+                    }}>
                       {WEIGHT_LABELS[q.weight]} weight
                     </span>
+                    {q.media && (
+                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#8B5CF622", color: "#a78bfa" }}>
+                        {q.media.type === "image" ? "🖼️ image" : "🎵 audio"}
+                      </span>
+                    )}
                   </div>
                   <p className="text-match-text text-sm font-medium leading-snug">{q.text}</p>
                   {q.options && q.options.length > 0 && (
-                    <p className="text-match-muted text-xs mt-1 truncate">
-                      {q.options.join(" · ")}
-                    </p>
+                    <p className="text-match-muted text-xs mt-1 truncate">{q.options.join(" · ")}</p>
                   )}
                   {q.type === "scale" && (
-                    <p className="text-match-muted text-xs mt-1">
-                      {q.scaleMin || "Low"} → {q.scaleMax || "High"}
-                    </p>
+                    <p className="text-match-muted text-xs mt-1">{q.scaleMin || "Low"} → {q.scaleMax || "High"}</p>
                   )}
                 </div>
               </div>
 
-              {/* Actions */}
               <div className="flex border-t border-match-border divide-x divide-match-border">
-                <button
-                  onClick={() => startEdit(q)}
-                  className="flex-1 py-2.5 text-xs font-semibold text-match-muted hover:text-ember transition-colors"
-                >
+                <button onClick={() => startEdit(q)} className="flex-1 py-2.5 text-xs font-semibold text-match-muted hover:text-ember transition-colors">
                   Edit
                 </button>
-                <button
-                  onClick={() => setConfirmDeleteId(q.id)}
-                  className="flex-1 py-2.5 text-xs font-semibold text-match-muted hover:text-red-400 transition-colors"
-                >
+                <button onClick={() => setConfirmDeleteId(q.id)} className="flex-1 py-2.5 text-xs font-semibold text-match-muted hover:text-red-400 transition-colors">
                   Delete
                 </button>
               </div>
@@ -519,17 +688,11 @@ export const QuestionnaireEditor: React.FC<Props> = ({ onBack }) => {
         {filtered.length === 0 && (
           <div className="text-center py-12 text-match-muted text-sm">No questions in this category.</div>
         )}
-
-        {/* Bottom padding for FAB */}
         <div className="h-20" />
       </div>
 
-      {/* FAB — add question */}
       <div className="absolute bottom-6 right-6 left-6 flex gap-3">
-        <button
-          onClick={resetToDefaults}
-          className="px-4 py-3.5 rounded-2xl text-sm font-semibold text-match-muted border border-match-border bg-match-card"
-        >
+        <button onClick={resetToDefaults} className="px-4 py-3.5 rounded-2xl text-sm font-semibold text-match-muted border border-match-border bg-match-card">
           Reset defaults
         </button>
         <button
@@ -541,7 +704,6 @@ export const QuestionnaireEditor: React.FC<Props> = ({ onBack }) => {
         </button>
       </div>
 
-      {/* Delete confirm sheet */}
       {confirmDeleteId && (
         <div className="absolute inset-0 bg-black/70 flex items-end z-50">
           <div className="bg-match-surface rounded-t-3xl px-6 pt-5 pb-10 w-full space-y-4">
@@ -549,19 +711,10 @@ export const QuestionnaireEditor: React.FC<Props> = ({ onBack }) => {
             <div className="text-center space-y-2">
               <p className="text-2xl">🗑️</p>
               <h3 className="text-match-text font-bold">Delete this question?</h3>
-              <p className="text-match-muted text-sm">
-                Existing user answers for this question won't be matched anymore.
-              </p>
+              <p className="text-match-muted text-sm">Existing answers for this question won't be matched anymore.</p>
             </div>
-            <button
-              onClick={() => deleteQuestion(confirmDeleteId)}
-              className="w-full py-4 rounded-2xl font-bold text-white bg-red-600"
-            >
-              Delete
-            </button>
-            <button onClick={() => setConfirmDeleteId(null)} className="w-full py-3 text-match-muted text-sm">
-              Cancel
-            </button>
+            <button onClick={() => deleteQuestion(confirmDeleteId)} className="w-full py-4 rounded-2xl font-bold text-white bg-red-600">Delete</button>
+            <button onClick={() => setConfirmDeleteId(null)} className="w-full py-3 text-match-muted text-sm">Cancel</button>
           </div>
         </div>
       )}
