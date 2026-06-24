@@ -6,6 +6,7 @@ interface Props {
   onBack: () => void;
   onUpdatePrivacy: (updated: UserProfile["privacy"]) => void;
   onDeleteAccount: () => void;
+  onOpenEditor: () => void;
 }
 
 const LEVEL_LABELS: Record<PrivacyLevel, string> = {
@@ -56,6 +57,7 @@ export const SettingsScreen: React.FC<Props> = ({
   onBack,
   onUpdatePrivacy,
   onDeleteAccount,
+  onOpenEditor,
 }) => {
   const [privacy, setPrivacy] = useState({ ...profile.privacy });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -159,6 +161,21 @@ export const SettingsScreen: React.FC<Props> = ({
             </div>
             <input type="range" min="30" max="90" defaultValue="60" className="w-full accent-ember" />
           </div>
+        </section>
+
+        {/* Questionnaire editor */}
+        <section>
+          <p className="text-match-muted text-xs font-semibold uppercase tracking-wider mb-3">Questionnaire</p>
+          <button
+            onClick={onOpenEditor}
+            className="w-full flex items-center justify-between px-4 py-4 bg-match-card border border-match-border rounded-2xl transition-all active:scale-95"
+          >
+            <div className="text-left">
+              <p className="text-match-text text-sm font-semibold">Edit questions</p>
+              <p className="text-match-muted text-xs mt-0.5">Add, remove, or reorder the questions all users answer</p>
+            </div>
+            <span className="text-match-muted text-lg ml-3">›</span>
+          </button>
         </section>
 
         {/* About */}

@@ -16,8 +16,8 @@ import { ChatScreen } from "./components/ChatScreen";
 import { ProfileScreen } from "./components/ProfileScreen";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { NotificationsScreen } from "./components/NotificationsScreen";
+import { QuestionnaireEditor, loadQuestions } from "./components/QuestionnaireEditor";
 import { calculateCompatibility } from "./hooks/useCompatibility";
-import { QUESTIONS } from "./data/questions";
 
 // Simulated other users the bot will match against
 const SIMULATED_PROFILES: Omit<UserProfile, "id" | "qrCode" | "createdAt">[] = [
@@ -431,8 +431,13 @@ export default function App() {
           setState({ currentUser: null, conversations: [], notifications: [], otherProfiles: [] });
           setScreen("onboarding");
         }}
+        onOpenEditor={() => setScreen("questionnaire_editor")}
       />
     );
+  }
+
+  if (screen === "questionnaire_editor") {
+    return <QuestionnaireEditor onBack={() => setScreen("settings")} />;
   }
 
   if (screen === "notifications") {

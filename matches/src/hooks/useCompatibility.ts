@@ -1,5 +1,7 @@
 import { Answer, CompatibilityScore, UserProfile } from "../types";
-import { QUESTIONS } from "../data/questions";
+import { loadQuestions } from "../components/QuestionnaireEditor";
+
+const QUESTIONS = loadQuestions();
 
 function scoreAnswers(a: Answer[], b: Answer[]): CompatibilityScore {
   const bMap = new Map(b.map((ans) => [ans.questionId, ans.value]));

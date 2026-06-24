@@ -68,7 +68,8 @@ export type Screen =
   | "profile"
   | "settings"
   | "notifications"
-  | "match_detail";
+  | "match_detail"
+  | "questionnaire_editor";
 
 export interface Question {
   id: string;

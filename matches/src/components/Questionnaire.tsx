@@ -1,7 +1,9 @@
 import React, { useState } from "react";
-import { QUESTIONS, CATEGORIES } from "../data/questions";
 import { Answer, Question } from "../types";
 import { Logo } from "./Logo";
+import { loadQuestions } from "./QuestionnaireEditor";
+
+const QUESTIONS = loadQuestions();
 
 interface Props {
   existingAnswers?: Answer[];
