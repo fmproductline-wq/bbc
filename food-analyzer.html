@@ -454,9 +454,10 @@
 
 <script>
 // ── STATE ──
-let apiKey = localStorage.getItem('ingredient_ai_key') || '';
-let depth  = localStorage.getItem('ingredient_ai_depth') || 'detailed';
-let busy   = false;
+let apiKey      = localStorage.getItem('ingredient_ai_key') || '';
+let depth       = localStorage.getItem('ingredient_ai_depth') || 'detailed';
+let busy        = false;
+let cardCounter = 0;
 
 // ── INIT ──
 (function init() {
@@ -524,7 +525,7 @@ async function sendText() {
   const input = document.getElementById('msgInput');
   const text  = input.innerText.trim();
   if (!text || busy) return;
-  input.innerText = '';
+  input.innerHTML = '';   // innerHTML clears all child nodes so :empty placeholder works
   updateSendBtn();
   addOutBubble(null, text);
   await analyze({ text });
@@ -549,12 +550,29 @@ function addOutBubble(imageDataUrl, text) {
   const chat = document.getElementById('chat');
   const div  = document.createElement('div');
   div.className = 'msg out';
-  let html = '';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+
   if (imageDataUrl) {
-    html += `<img class="preview" src="${imageDataUrl}" alt="uploaded" onclick="openLightbox('${imageDataUrl}')"/>`;
+    const img = document.createElement('img');
+    img.className = 'preview';
+    img.alt = 'uploaded';
+    img.src = imageDataUrl;
+    // use this.src so the base64 isn't duplicated into an onclick string
+    img.addEventListener('click', () => openLightbox(img.src));
+    bubble.appendChild(img);
   }
-  html += escHtml(text);
-  div.innerHTML = `<div class="bubble">${html}<span class="time">${nowTime()}</span></div>`;
+
+  const textNode = document.createTextNode(text);
+  bubble.appendChild(textNode);
+
+  const timeEl = document.createElement('span');
+  timeEl.className = 'time';
+  timeEl.textContent = nowTime();
+  bubble.appendChild(timeEl);
+
+  div.appendChild(bubble);
   chat.appendChild(div);
   scrollBottom();
 }
@@ -585,7 +603,7 @@ async function analyze({ text, imageDataUrl }) {
   document.getElementById('sendBtn').disabled = true;
   document.getElementById('status-text').textContent = 'Analyzing…';
 
-  const typing = addTyping();
+  addTyping();
 
   const depthGuide = {
     standard: 'Give a clear, concise analysis for each ingredient.',
@@ -655,7 +673,7 @@ Never refuse to analyze an ingredient. Be honest about controversial additives, 
     addSystemBubble(`❌ Network error: ${err.message}`);
   } finally {
     busy = false;
-    document.getElementById('sendBtn').disabled = false;
+    updateSendBtn();  // respects empty-input state instead of always enabling
     document.getElementById('status-text').textContent = 'The truth about your food';
   }
 }
@@ -696,6 +714,9 @@ function renderAnalysis(raw) {
   if (counts.bad)   chips += `<span class="summary-chip" style="background:#FFCDD2;color:#B71C1C;">❌ ${counts.bad} bad</span>`;
   if (counts.neutral) chips += `<span class="summary-chip" style="background:#E0E0E0;color:#424242;">➖ ${counts.neutral} neutral</span>`;
 
+  // unique prefix so IDs don't collide when user runs multiple analyses
+  const prefix = 'c' + (cardCounter++);
+
   let cardsHtml = ingredients.map((ing, i) => {
     const bgClass   = ing.rating==='good' ? 'good-bg' : ing.rating==='bad' ? 'bad-bg' : ing.rating==='mixed' ? 'warn-bg' : 'neut-bg';
     const pillClass = ing.rating==='good' ? 'pill-good': ing.rating==='bad' ? 'pill-bad': ing.rating==='mixed' ? 'pill-warn': 'pill-neut';
@@ -706,12 +727,12 @@ function renderAnalysis(raw) {
 
     return `
 <div class="ingredient-card">
-  <div class="ing-header ${bgClass}" onclick="toggleCard(this)" id="hdr-${i}">
+  <div class="ing-header ${bgClass}" onclick="toggleCard(this)" id="${prefix}-hdr-${i}">
     <span class="ing-badge">${escHtml(ing.emoji||'🔬')}</span>
     <span>${escHtml(ing.name)}<span class="rating-pill ${pillClass}">${pillLabel}</span></span>
     <span class="arrow">▼</span>
   </div>
-  <div class="ing-body" id="body-${i}">
+  <div class="ing-body" id="${prefix}-body-${i}">
     <p><em>${escHtml(ing.verdict||'')}</em></p>
     ${goodList ? `<h4>✅ Benefits</h4><ul>${goodList}</ul>` : ''}
     ${badList  ? `<h4>❌ Concerns</h4><ul>${badList}</ul>`  : ''}
@@ -737,9 +758,10 @@ function renderAnalysis(raw) {
 
 function toggleCard(header) {
   header.classList.toggle('open');
-  const idx  = header.id.split('-')[1];
-  const body = document.getElementById('body-' + idx);
-  body.classList.toggle('open');
+  // ID format: "c{counter}-hdr-{index}" → replace "-hdr-" with "-body-"
+  const bodyId = header.id.replace('-hdr-', '-body-');
+  const body   = document.getElementById(bodyId);
+  if (body) body.classList.toggle('open');
 }
 
 // ── SYSTEM BUBBLE ──
