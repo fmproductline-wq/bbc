@@ -2,8 +2,6 @@
 Deal Scanner — FastAPI backend
 Serves the SPA and exposes /api/scan for bot-driven deal searches.
 """
-import asyncio
-import os
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
@@ -14,7 +12,6 @@ from bots import scan_categories, CATEGORY_QUERIES
 app = FastAPI(title="Deal Scanner Bot")
 
 STATIC = Path(__file__).parent / "static"
-app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
 class ScanRequest(BaseModel):
@@ -41,10 +38,14 @@ async def scan(req: ScanRequest):
 
     results = await scan_categories(req.categories, req.query.strip())
     flat: list[dict] = []
-    for cat, deals in results.items():
+    for deals in results.values():
         flat.extend(deals)
 
     return JSONResponse({"deals": flat, "total": len(flat)})
+
+
+# Mount static files AFTER route definitions to avoid shadowing /
+app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
 if __name__ == "__main__":

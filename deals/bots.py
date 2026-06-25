@@ -5,25 +5,25 @@ then uses Claude to extract structured deal data.
 import asyncio
 import json
 import re
+import urllib.parse
 import httpx
-from typing import Any
 import anthropic
 
 ANTHROPIC_CLIENT = anthropic.Anthropic()
 
 CATEGORY_QUERIES: dict[str, list[str]] = {
-    "Electronics":     ["electronics deals today", "tech sale discount coupon"],
-    "Clothing":        ["clothing sale today", "fashion deals discount coupon"],
-    "Food & Groceries":["grocery deals this week", "food coupons discount"],
-    "Travel":          ["travel deals flights hotels", "vacation discount coupon"],
-    "Home & Garden":   ["home decor sale", "garden furniture deals discount"],
-    "Sports":          ["sports equipment sale", "fitness deals discount"],
-    "Books & Media":   ["book deals kindle sale", "ebook discount coupon"],
-    "Beauty":          ["beauty skincare sale", "makeup deals discount coupon"],
-    "Gaming":          ["gaming deals sale", "video game discount coupon"],
-    "Automotive":      ["auto parts sale", "car accessories deals coupon"],
-    "Toys & Kids":     ["toy deals sale", "kids products discount coupon"],
-    "Health":          ["health supplement sale", "pharmacy deals coupon"],
+    "Electronics":      ["electronics deals today", "tech sale discount coupon"],
+    "Clothing":         ["clothing sale today", "fashion deals discount coupon"],
+    "Food & Groceries": ["grocery deals this week", "food coupons discount"],
+    "Travel":           ["travel deals flights hotels", "vacation discount coupon"],
+    "Home & Garden":    ["home decor sale", "garden furniture deals discount"],
+    "Sports":           ["sports equipment sale", "fitness deals discount"],
+    "Books & Media":    ["book deals kindle sale", "ebook discount coupon"],
+    "Beauty":           ["beauty skincare sale", "makeup deals discount coupon"],
+    "Gaming":           ["gaming deals sale", "video game discount coupon"],
+    "Automotive":       ["auto parts sale", "car accessories deals coupon"],
+    "Toys & Kids":      ["toy deals sale", "kids products discount coupon"],
+    "Health":           ["health supplement sale", "pharmacy deals coupon"],
 }
 
 DEAL_EXTRACTION_PROMPT = """You are a deal-finding assistant. I will give you web search results about deals for the category: {category}.
@@ -51,100 +51,130 @@ Search results:
 
 
 async def duckduckgo_search(query: str, max_results: int = 8) -> list[dict]:
-    """Fetch DuckDuckGo instant answer + web results via HTML scrape."""
+    """Fetch DuckDuckGo instant answer + related topics."""
     headers = {"User-Agent": "Mozilla/5.0 (compatible; DealBot/1.0)"}
     params = {"q": query, "format": "json", "no_html": "1", "skip_disambig": "1"}
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=12) as client:
         try:
             r = await client.get("https://api.duckduckgo.com/", params=params, headers=headers)
+            r.raise_for_status()
             data = r.json()
-            results = []
+            results: list[dict] = []
             if data.get("AbstractText"):
-                results.append({"title": data.get("Heading", ""), "body": data["AbstractText"], "url": data.get("AbstractURL", "")})
+                results.append({
+                    "title": data.get("Heading", ""),
+                    "body": data["AbstractText"],
+                    "url": data.get("AbstractURL", ""),
+                })
             for topic in data.get("RelatedTopics", [])[:max_results]:
                 if isinstance(topic, dict) and topic.get("Text"):
-                    results.append({"title": topic.get("Text", "")[:80], "body": topic.get("Text", ""), "url": topic.get("FirstURL", "")})
+                    results.append({
+                        "title": topic.get("Text", "")[:80],
+                        "body": topic.get("Text", ""),
+                        "url": topic.get("FirstURL", ""),
+                    })
             return results
         except Exception:
             return []
 
 
-async def brave_search_fallback(query: str) -> list[dict]:
-    """Fallback: use a deal aggregator RSS feed."""
-    feeds = [
-        f"https://www.reddit.com/r/deals/search.json?q={query}&sort=new&limit=5",
-    ]
-    results = []
+async def reddit_search(query: str) -> list[dict]:
+    """Search Reddit r/deals for the query."""
+    encoded = urllib.parse.quote_plus(query)
+    url = f"https://www.reddit.com/r/deals/search.json?q={encoded}&sort=new&limit=5&restrict_sr=1"
     headers = {"User-Agent": "Mozilla/5.0 (compatible; DealBot/1.0)"}
-    async with httpx.AsyncClient(timeout=10) as client:
-        for url in feeds:
-            try:
-                r = await client.get(url, headers=headers)
-                data = r.json()
-                posts = data.get("data", {}).get("children", [])
-                for p in posts:
-                    d = p.get("data", {})
-                    results.append({
-                        "title": d.get("title", ""),
-                        "body": d.get("selftext", d.get("title", "")),
-                        "url": d.get("url", ""),
-                    })
-            except Exception:
-                pass
-    return results
+    async with httpx.AsyncClient(timeout=12) as client:
+        try:
+            r = await client.get(url, headers=headers)
+            r.raise_for_status()
+            data = r.json()
+            posts = data.get("data", {}).get("children", [])
+            results = []
+            for p in posts:
+                d = p.get("data", {})
+                results.append({
+                    "title": d.get("title", ""),
+                    "body": d.get("selftext") or d.get("title", ""),
+                    "url": d.get("url", ""),
+                })
+            return results
+        except Exception:
+            return []
 
 
-def extract_deals_with_claude(category: str, raw_results: list[dict]) -> list[dict]:
+def _parse_claude_json(text: str) -> list[dict]:
+    """Strip markdown fences and parse JSON array from Claude's response."""
+    text = text.strip()
+    # Remove ```json ... ``` or ``` ... ``` wrappers
+    text = re.sub(r"^```[a-z]*\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    text = text.strip()
+    parsed = json.loads(text)
+    if isinstance(parsed, list):
+        return parsed
+    return []
+
+
+def _call_claude_sync(category: str, results_text: str) -> list[dict]:
+    """Blocking Claude API call — run via asyncio.to_thread."""
+    prompt = DEAL_EXTRACTION_PROMPT.format(category=category, results=results_text)
+    msg = ANTHROPIC_CLIENT.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=2048,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return _parse_claude_json(msg.content[0].text)
+
+
+async def extract_deals_with_claude(category: str, raw_results: list[dict]) -> list[dict]:
     """Use Claude to parse raw search results into structured deal objects."""
     if not raw_results:
         return []
 
     results_text = "\n\n".join(
-        f"[{i+1}] Title: {r.get('title','')}\nURL: {r.get('url','')}\nBody: {r.get('body','')}"
+        f"[{i+1}] Title: {r.get('title', '')}\nURL: {r.get('url', '')}\nBody: {r.get('body', '')}"
         for i, r in enumerate(raw_results)
     )
 
-    prompt = DEAL_EXTRACTION_PROMPT.format(category=category, results=results_text)
-
     try:
-        msg = ANTHROPIC_CLIENT.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=2048,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = msg.content[0].text.strip()
-        # strip markdown code fences if present
-        text = re.sub(r"^```json\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
-        deals = json.loads(text)
-        if isinstance(deals, list):
-            return deals
+        # Run blocking Claude call off the event loop
+        deals = await asyncio.to_thread(_call_claude_sync, category, results_text)
+        return deals
     except Exception as e:
         print(f"Claude extraction error for {category}: {e}")
-    return []
+        return []
 
 
 async def scan_category(category: str, extra_query: str = "") -> list[dict]:
     """Run a full scan for one category and return structured deals."""
-    base_queries = CATEGORY_QUERIES.get(category, [f"{category} deals discount"])
+    base_queries = list(CATEGORY_QUERIES.get(category, [f"{category} deals discount"]))
     if extra_query:
         base_queries = [f"{extra_query} {category} deal discount coupon"] + base_queries
 
     all_raw: list[dict] = []
     for q in base_queries[:2]:
-        results = await duckduckgo_search(q)
-        if not results:
-            results = await brave_search_fallback(q)
-        all_raw.extend(results)
+        ddg = await duckduckgo_search(q)
+        reddit = await reddit_search(q)
+        all_raw.extend(ddg)
+        all_raw.extend(reddit)
 
-    return extract_deals_with_claude(category, all_raw[:12])
+    # Deduplicate by URL
+    seen: set[str] = set()
+    unique: list[dict] = []
+    for r in all_raw:
+        u = r.get("url", "")
+        if u not in seen:
+            seen.add(u)
+            unique.append(r)
+
+    return await extract_deals_with_claude(category, unique[:14])
 
 
 async def scan_categories(categories: list[str], extra_query: str = "") -> dict[str, list[dict]]:
     """Scan multiple categories concurrently."""
-    tasks = {cat: scan_category(cat, extra_query) for cat in categories}
-    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
-    output: dict[str, list[dict]] = {}
-    for cat, res in zip(tasks.keys(), results):
-        output[cat] = res if isinstance(res, list) else []
-    return output
+    coros = [scan_category(cat, extra_query) for cat in categories]
+    results = await asyncio.gather(*coros, return_exceptions=True)
+    return {
+        cat: (res if isinstance(res, list) else [])
+        for cat, res in zip(categories, results)
+    }

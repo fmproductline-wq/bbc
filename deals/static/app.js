@@ -139,8 +139,9 @@ scanBtn.addEventListener('click', async () => {
     categories.forEach(c => markBotDone(c));
 
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || 'Scan failed');
+      let errMsg = 'Scan failed';
+      try { const err = await res.json(); errMsg = err.detail || errMsg; } catch (_) {}
+      throw new Error(errMsg);
     }
 
     const data = await res.json();
@@ -177,7 +178,6 @@ function renderDeals(deals) {
 function buildCard(deal) {
   const card = document.createElement('div');
   card.className = 'deal-card';
-  card.dataset.json = JSON.stringify(deal);
 
   const icon = PLACEHOLDER_ICONS[deal.category] || '🏷️';
 
@@ -229,7 +229,12 @@ function buildCard(deal) {
 
 function esc(str) {
   if (!str) return '';
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 window.copyLink = function(btn, url) {
