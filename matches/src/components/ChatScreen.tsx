@@ -38,7 +38,7 @@ export const ChatScreen: React.FC<Props> = ({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     onMarkRead(conversation.id);
-  }, [conversation.messages.length]);
+  }, [conversation.id, conversation.messages.length]);
 
   const send = () => {
     if (!input.trim()) return;

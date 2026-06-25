@@ -1,9 +1,12 @@
 import { Answer, CompatibilityScore, UserProfile } from "../types";
 import { loadQuestions } from "../components/QuestionnaireEditor";
 
-const QUESTIONS = loadQuestions();
-
 function scoreAnswers(a: Answer[], b: Answer[]): CompatibilityScore {
+  if (!Array.isArray(a) || !Array.isArray(b)) {
+    return { userId: "", score: 0, matchedCategories: [], sharedValues: [] };
+  }
+
+  const QUESTIONS = loadQuestions();
   const bMap = new Map(b.map((ans) => [ans.questionId, ans.value]));
   let totalWeight = 0;
   let matchedWeight = 0;
@@ -12,7 +15,7 @@ function scoreAnswers(a: Answer[], b: Answer[]): CompatibilityScore {
 
   for (const ansA of a) {
     const ansB = bMap.get(ansA.questionId);
-    if (!ansB) continue;
+    if (ansB === undefined || ansB === null) continue;
 
     const question = QUESTIONS.find((q) => q.id === ansA.questionId);
     if (!question) continue;
@@ -56,6 +59,9 @@ function scoreAnswers(a: Answer[], b: Answer[]): CompatibilityScore {
 }
 
 export function calculateCompatibility(userAnswers: Answer[], otherProfile: UserProfile): CompatibilityScore {
+  if (!otherProfile || !Array.isArray(otherProfile.answers)) {
+    return { userId: otherProfile?.id ?? "", score: 0, matchedCategories: [], sharedValues: [] };
+  }
   const result = scoreAnswers(userAnswers, otherProfile.answers);
   result.userId = otherProfile.id;
   return result;

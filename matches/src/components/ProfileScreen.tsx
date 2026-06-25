@@ -14,8 +14,8 @@ interface Props {
 }
 
 export const ProfileScreen: React.FC<Props> = ({ profile, onBack, onEditQuestionnaire, onOpenMyQuestions }) => {
-  const answered = profile.answers.filter((a) => a.value !== "").length;
-  const completionPct = Math.round((answered / QUESTIONS.length) * 100);
+  const answered = profile.answers.filter((a) => a.value !== "" && a.value !== undefined).length;
+  const completionPct = Math.min(100, Math.round((answered / Math.max(QUESTIONS.length, 1)) * 100));
 
   return (
     <div className="flex flex-col h-full bg-match-bg">

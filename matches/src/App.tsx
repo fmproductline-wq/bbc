@@ -145,11 +145,30 @@ function saveState(state: AppState) {
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("splash");
-  const [state, setState] = useState<AppState>(loadState);
+  const [state, setState] = useState<AppState>(() => {
+    const loaded = loadState();
+    // Ensure all profiles have personalQuestions (migration for existing data)
+    if (loaded.currentUser && !loaded.currentUser.personalQuestions) {
+      loaded.currentUser.personalQuestions = [];
+    }
+    return loaded;
+  });
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [editingAnswers, setEditingAnswers] = useState(false);
+  const timeoutsRef = React.useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const { currentUser, conversations, notifications, otherProfiles } = state;
+
+  // Clean up all pending timeouts on unmount
+  useEffect(() => {
+    return () => { timeoutsRef.current.forEach(clearTimeout); };
+  }, []);
+
+  const safeTimeout = (fn: () => void, ms: number) => {
+    const id = setTimeout(fn, ms);
+    timeoutsRef.current.push(id);
+    return id;
+  };
 
   const updateState = useCallback((patch: Partial<AppState>) => {
     setState((prev) => {
@@ -159,11 +178,14 @@ export default function App() {
     });
   }, []);
 
-  // Init simulated profiles once
+  // Init simulated profiles once using functional setState to avoid stale closure
   useEffect(() => {
-    if (state.otherProfiles.length === 0) {
-      updateState({ otherProfiles: SIMULATED_PROFILES.map(createProfile) });
-    }
+    setState((prev) => {
+      if (prev.otherProfiles.length > 0) return prev;
+      const next = { ...prev, otherProfiles: SIMULATED_PROFILES.map(createProfile) };
+      saveState(next);
+      return next;
+    });
   }, []);
 
   // After splash, decide where to go
@@ -188,15 +210,26 @@ export default function App() {
     updateState({ currentUser: updated });
 
     // Trigger bot matching after a short delay
-    setTimeout(() => runBotMatching(updated), 1500);
+    safeTimeout(() => runBotMatching(updated), 1500);
     setScreen("home");
   };
 
   const runBotMatching = (user: UserProfile) => {
-    const profiles = state.otherProfiles.length > 0 ? state.otherProfiles : SIMULATED_PROFILES.map(createProfile);
-    const existingPartners = new Set(
-      conversations.flatMap((c) => c.participantIds.filter((id) => id !== user.id))
-    );
+    setState((prev) => {
+      const profiles = prev.otherProfiles.length > 0 ? prev.otherProfiles : SIMULATED_PROFILES.map(createProfile);
+      const existingPartners = new Set(
+        prev.conversations.flatMap((c) => c.participantIds.filter((id) => id !== user.id))
+      );
+      return runBotMatchingInner(user, profiles, existingPartners, prev);
+    });
+  };
+
+  const runBotMatchingInner = (
+    user: UserProfile,
+    profiles: UserProfile[],
+    existingPartners: Set<string>,
+    prev: AppState
+  ): AppState => {
 
     const newConvs: Conversation[] = [];
     const newNotifs: Notification[] = [];
@@ -238,18 +271,14 @@ export default function App() {
       });
     }
 
-    if (newConvs.length > 0) {
-      setState((prev) => {
-        const next = {
-          ...prev,
-          conversations: [...prev.conversations, ...newConvs],
-          notifications: [...prev.notifications, ...newNotifs],
-          otherProfiles: profiles,
-        };
-        saveState(next);
-        return next;
-      });
-    }
+    const next: AppState = {
+      ...prev,
+      conversations: newConvs.length > 0 ? [...prev.conversations, ...newConvs] : prev.conversations,
+      notifications: newNotifs.length > 0 ? [...prev.notifications, ...newNotifs] : prev.notifications,
+      otherProfiles: profiles,
+    };
+    saveState(next);
+    return next;
   };
 
   const handleSendMessage = (convId: string, content: string, type: Message["type"] = "text") => {
@@ -293,7 +322,7 @@ export default function App() {
         "What made you choose that answer in the questionnaire?",
       ];
 
-      setTimeout(() => {
+      safeTimeout(() => {
         const reply: Message = {
           id: uuidv4(),
           senderId: other.id,
@@ -346,11 +375,12 @@ export default function App() {
     });
 
     // Other user reveals after a moment too
-    setTimeout(() => {
-      const conv = conversations.find((c) => c.id === convId);
-      if (!conv) return;
-      const otherId = conv.participantIds.find((id) => id !== currentUser.id)!;
+    safeTimeout(() => {
       setState((prev) => {
+        const conv = prev.conversations.find((c) => c.id === convId);
+        if (!conv) return prev;
+        const otherId = conv.participantIds.find((id) => id !== currentUser.id);
+        if (!otherId) return prev;
         const next = {
           ...prev,
           conversations: prev.conversations.map((c) =>

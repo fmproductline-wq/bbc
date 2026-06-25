@@ -43,8 +43,8 @@ export const MyQuestions: React.FC<Props> = ({ questions, onSave, onBack }) => {
   };
 
   const cancelEdit = () => {
-    // If the item was brand new and never saved, remove it
-    if (draft && !questions.find((q) => q.id === draft.id) && !items.find((q) => q.id === draft.id && q.text.trim())) {
+    // Remove item if it was brand new and never had text saved
+    if (draft && !questions.find((q) => q.id === draft.id)) {
       setItems((prev) => prev.filter((q) => q.id !== draft.id));
     }
     setDraft(null);

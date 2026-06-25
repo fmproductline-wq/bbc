@@ -67,10 +67,17 @@ const MediaPicker: React.FC<MediaPickerProps> = ({ current, onSelect, onClose })
   const [loading, setLoading] = useState(false);
 
   const handleFile = async (file: File, type: "image" | "audio") => {
+    const MAX_MB = 5;
+    if (file.size > MAX_MB * 1024 * 1024) {
+      alert(`File too large. Please pick a file under ${MAX_MB}MB.`);
+      return;
+    }
     setLoading(true);
     try {
       const dataUrl = await readFileAsDataUrl(file);
       onSelect({ type, dataUrl, name: file.name });
+    } catch {
+      alert("Could not load file. Please try another.");
     } finally {
       setLoading(false);
     }
