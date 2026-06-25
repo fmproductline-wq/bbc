@@ -231,11 +231,8 @@ def _sign_and_degree(lon: float) -> tuple[str, float]:
 
 def _ascendant(obs: "ephem.Observer") -> float:
     """Tropical Ascendant longitude in degrees."""
-    # Local Sidereal Time
-    lst = float(obs.sidereal_time())  # radians
-    eps = ephem.Sun(obs).hlong       # rough obliquity via sun's ecliptic
-    # Use standard spherical trigonometry formula
-    eps_r = math.radians(23.4397)    # mean obliquity (good enough)
+    lst   = float(obs.sidereal_time())  # radians
+    eps_r = math.radians(23.4397)       # mean obliquity of ecliptic
     lat_r = float(obs.lat)
     # RAMC = Right Ascension of Midheaven (in radians)
     ramc = lst  # LST in radians
@@ -400,9 +397,19 @@ MAJOR_CITIES = [
 ]
 
 
+def _greenwich_sidereal_time(obs_date: "ephem.Date") -> float:
+    """Return Greenwich Sidereal Time in radians for a given ephem Date."""
+    obs_gw = ephem.Observer()
+    obs_gw.date = obs_date
+    obs_gw.lat = "0"
+    obs_gw.lon = "0"
+    obs_gw.pressure = 0
+    return float(obs_gw.sidereal_time())
+
+
 def _ra_to_geo_longitude(ra_rad: float, obs_date: "ephem.Date") -> float:
     """Convert RA to geographic longitude for Midheaven (MC line)."""
-    gst = ephem.gmst(obs_date)          # Greenwich Sidereal Time in radians
+    gst = _greenwich_sidereal_time(obs_date)
     geo_lon = math.degrees(ra_rad - gst) % 360
     if geo_lon > 180:
         geo_lon -= 360
@@ -456,7 +463,7 @@ def calculate_astrocartography(
             # ── AC / DC curves: where body rises / sets at each latitude ─────
             # Rising: Hour Angle H = -arccos(-tan(δ)·tan(φ))
             # Geographic longitude of rising point = LST - H (in degrees)
-            gst_deg = math.degrees(ephem.gmst(obs_date))
+            gst_deg = math.degrees(_greenwich_sidereal_time(obs_date))
             ra_deg  = math.degrees(ra)
             dec_r   = dec
 
@@ -489,7 +496,11 @@ def calculate_astrocartography(
     return result
 
 
-def find_cities_on_lines(astrocarto: dict, threshold_deg: float = 3.0) -> dict[str, list[str]]:
+def find_cities_on_lines(
+    astrocarto: dict,
+    threshold_deg: float = 4.0,
+    lat_step: int = 5,
+) -> dict[str, list[str]]:
     """
     For each planet find major cities within threshold_deg of any line.
     Returns {planet: [city_descriptions]}.
@@ -497,29 +508,30 @@ def find_cities_on_lines(astrocarto: dict, threshold_deg: float = 3.0) -> dict[s
     city_results: dict[str, list[str]] = {}
     for planet, data in astrocarto.items():
         hits = []
-        sym = data.get("symbol", planet[:2])
-        mc  = data.get("mc_lon")
-        ic  = data.get("ic_lon")
+        mc = data.get("mc_lon")
+        ic = data.get("ic_lon")
         ac_pts = {lat: lon for lat, lon in data.get("ac_pts", [])}
         dc_pts = {lat: lon for lat, lon in data.get("dc_pts", [])}
 
         for city_name, clat, clon in MAJOR_CITIES:
             tags = []
-            # MC/IC are vertical lines — compare longitude
+            # MC/IC are vertical lines — compare longitude only
             if mc is not None and abs(clon - mc) < threshold_deg:
                 tags.append("MC")
             if ic is not None and abs(clon - ic) < threshold_deg:
                 tags.append("IC")
-            # AC/DC — find closest lat and compare longitude
-            for lat_key in [int(clat), int(clat) - 5, int(clat) + 5]:
-                if lat_key in ac_pts:
-                    if abs(clon - ac_pts[lat_key]) < threshold_deg:
-                        tags.append("AC")
-                if lat_key in dc_pts:
-                    if abs(clon - dc_pts[lat_key]) < threshold_deg:
-                        tags.append("DC")
+            # AC/DC — snap city latitude to nearest grid point and neighbours
+            nearest = round(clat / lat_step) * lat_step
+            for lat_key in [nearest, nearest - lat_step, nearest + lat_step]:
+                if lat_key in ac_pts and abs(clon - ac_pts[lat_key]) < threshold_deg:
+                    tags.append("AC")
+                    break
+            for lat_key in [nearest, nearest - lat_step, nearest + lat_step]:
+                if lat_key in dc_pts and abs(clon - dc_pts[lat_key]) < threshold_deg:
+                    tags.append("DC")
+                    break
             if tags:
-                hits.append(f"{city_name} ({'/'.join(set(tags))})")
+                hits.append(f"{city_name} ({'/'.join(dict.fromkeys(tags))})")
         city_results[planet] = hits
     return city_results
 

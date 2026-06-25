@@ -712,7 +712,8 @@ class NumerologyTab(ctk.CTkFrame):
                 txt.remove()
 
             for planet, data in self._astro_data.items():
-                if not self._planet_vars.get(planet, ctk.BooleanVar(value=False)).get():
+                pvar = self._planet_vars.get(planet)
+                if not pvar or not pvar.get():
                     continue
                 color = PLANET_COLORS.get(planet, "#FFFFFF")
                 mc  = data.get("mc_lon")
