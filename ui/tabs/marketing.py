@@ -700,9 +700,10 @@ class MarketingTab(ctk.CTkFrame):
             total = len(self._post_log)
             rate = f"{round(len([r for r in self._post_log if r['success']]) / total * 100)}%" if total else "—"
 
-            self.after(0, self._stat_tiles["total_posts"].configure, {"text": str(sum(len(r["success"]) for r in self._post_log))})
-            self.after(0, self._stat_tiles["success_rate"].configure, {"text": rate})
-            self.after(0, self._stat_tiles["last_run"].configure, {"text": now})
+            _total = str(sum(len(r["success"]) for r in self._post_log))
+            self.after(0, lambda _t=_total: self._stat_tiles["total_posts"].configure(text=_t))
+            self.after(0, lambda _r=rate: self._stat_tiles["success_rate"].configure(text=_r))
+            self.after(0, lambda _n=now: self._stat_tiles["last_run"].configure(text=_n))
 
             msg = f"Done — posted to {ok}" if ok else "Campaign finished with no successful posts."
             self.after(0, self._log, msg, GREEN if ok else RED)
@@ -806,7 +807,7 @@ class MarketingTab(ctk.CTkFrame):
             if result:
                 self.after(0, self._log, f"Posted to {platform}!", GREEN)
                 if platform in self._platform_status_labels:
-                    self.after(0, self._platform_status_labels[platform].configure, {"text_color": GREEN})
+                    self.after(0, lambda _p=platform: self._platform_status_labels[_p].configure(text_color=GREEN))
             else:
                 self.after(0, self._log, f"{platform} post failed — check credentials", RED)
         except Exception as e:
@@ -833,7 +834,8 @@ class MarketingTab(ctk.CTkFrame):
                 if i < len(emails):
                     email = emails[i]
                     self.after(0, card.grid)
-                    self.after(0, subj_lbl.configure, {"text": email.get("subject", "")})
+                    _subj = email.get("subject", "")
+                    self.after(0, lambda _s=_subj, _lbl=subj_lbl: _lbl.configure(text=_s))
                     body = email.get("body", "")
                     self.after(0, lambda _tb=tb, _b=body: (_tb.delete("1.0", "end"), _tb.insert("1.0", _b)))
                 else:
@@ -886,9 +888,12 @@ class MarketingTab(ctk.CTkFrame):
                     _tb.configure(state="disabled"),
                 ))
 
-            self.after(0, self._sales_tiles["total_revenue"].configure, {"text": f"${total_rev:,.2f}"})
-            self.after(0, self._sales_tiles["total_sales"].configure,   {"text": str(total_count)})
-            self.after(0, self._sales_tiles["platforms"].configure,     {"text": str(active_platforms)})
+            _rev = f"${total_rev:,.2f}"
+            _cnt = str(total_count)
+            _apl = str(active_platforms)
+            self.after(0, lambda: self._sales_tiles["total_revenue"].configure(text=_rev))
+            self.after(0, lambda: self._sales_tiles["total_sales"].configure(text=_cnt))
+            self.after(0, lambda: self._sales_tiles["platforms"].configure(text=_apl))
             self.after(0, self._log, "Sales data refreshed.", GREEN)
         except Exception as e:
             self.after(0, self._log, f"Sales refresh error: {e}", RED)

@@ -41,4 +41,8 @@ def get_orders() -> list[dict]:
         timeout=15,
     )
     r.raise_for_status()
-    return r.json()
+    data = r.json()
+    # API returns either a list of order objects or a wrapped dict
+    if isinstance(data, list):
+        return [item.get("order", item) for item in data]
+    return data.get("orders", [])
