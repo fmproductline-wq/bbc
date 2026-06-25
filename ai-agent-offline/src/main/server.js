@@ -56,16 +56,21 @@ function proxyRequest(targetUrl, req, res) {
   };
 
   const proxyReq = http.request(options, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode, {
+    const headers = {
       'Content-Type': proxyRes.headers['content-type'] || 'application/json',
-      'Transfer-Encoding': proxyRes.headers['transfer-encoding'] || '',
       'Access-Control-Allow-Origin': '*',
-    });
+    };
+    if (proxyRes.headers['transfer-encoding']) {
+      headers['Transfer-Encoding'] = proxyRes.headers['transfer-encoding'];
+    }
+    res.writeHead(proxyRes.statusCode, headers);
     proxyRes.pipe(res);
   });
 
   proxyReq.on('error', (err) => {
-    res.status(502).json({ error: 'Ollama not reachable', detail: err.message });
+    if (!res.headersSent) {
+      res.status(502).json({ error: 'Ollama not reachable', detail: err.message });
+    }
   });
 
   if (req.body) {

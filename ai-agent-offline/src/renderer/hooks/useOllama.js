@@ -42,12 +42,14 @@ export function useOllama() {
   return { status, models, checkStatus };
 }
 
-export async function streamChat({ model, messages, onChunk, onDone, onError, signal }) {
+export async function streamChat({ model, messages, options, onChunk, onDone, onError, signal }) {
   try {
+    const body = { model, messages, stream: true };
+    if (options && Object.keys(options).length > 0) body.options = options;
     const res = await fetch(`${API_BASE}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages, stream: true }),
+      body: JSON.stringify(body),
       signal,
     });
 

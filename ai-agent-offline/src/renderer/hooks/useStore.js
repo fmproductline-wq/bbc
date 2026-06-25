@@ -1,47 +1,45 @@
 import { useState, useEffect, useCallback } from 'react';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI;
-
 const memCache = {};
 
 export function useStore(key, defaultValue) {
-  const [value, setValue] = useState(() => {
-    if (memCache[key] !== undefined) return memCache[key];
-    return defaultValue;
+  const [state, setState] = useState({
+    value: memCache[key] !== undefined ? memCache[key] : defaultValue,
+    hydrated: memCache[key] !== undefined, // already in cache = already hydrated
   });
 
   useEffect(() => {
     if (isElectron) {
       window.electronAPI.getStore(key).then(v => {
-        if (v !== undefined) {
-          memCache[key] = v;
-          setValue(v);
-        }
+        const value = v !== undefined ? v : defaultValue;
+        memCache[key] = value;
+        setState({ value, hydrated: true });
       });
     } else {
       try {
         const stored = localStorage.getItem(`bb_ai_${key}`);
-        if (stored !== null) {
-          const parsed = JSON.parse(stored);
-          memCache[key] = parsed;
-          setValue(parsed);
-        }
-      } catch {}
+        const value = stored !== null ? JSON.parse(stored) : defaultValue;
+        memCache[key] = value;
+        setState({ value, hydrated: true });
+      } catch {
+        setState(s => ({ ...s, hydrated: true }));
+      }
     }
   }, [key]);
 
   const set = useCallback((updaterOrValue) => {
-    setValue(prev => {
-      const next = typeof updaterOrValue === 'function' ? updaterOrValue(prev) : updaterOrValue;
+    setState(prev => {
+      const next = typeof updaterOrValue === 'function' ? updaterOrValue(prev.value) : updaterOrValue;
       memCache[key] = next;
       if (isElectron) {
         window.electronAPI.setStore(key, next);
       } else {
         try { localStorage.setItem(`bb_ai_${key}`, JSON.stringify(next)); } catch {}
       }
-      return next;
+      return { value: next, hydrated: true };
     });
   }, [key]);
 
-  return [value, set];
+  return [state.value, set, state.hydrated];
 }

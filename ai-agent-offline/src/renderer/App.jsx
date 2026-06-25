@@ -10,22 +10,25 @@ import { useOllama } from './hooks/useOllama';
 
 export default function App() {
   const [view, setView] = useState('chat');
-  const [conversations, setConversations] = useStore('conversations', []);
+  const [conversations, setConversations, convsHydrated] = useStore('conversations', []);
   const [activeConvId, setActiveConvId] = useStore('activeConvId', null);
   const [selectedModel, setSelectedModel] = useStore('selectedModel', '');
-  const [setupDone, setSetupDone] = useStore('setupDone', false);
+  const [setupDone, setSetupDone, setupHydrated] = useStore('setupDone', false);
   const { status, models, checkStatus } = useOllama();
 
+  // Initialize first conversation once store is loaded
   useEffect(() => {
+    if (!convsHydrated) return;
     if (conversations.length === 0) {
       const id = crypto.randomUUID();
       setConversations([{ id, title: 'New Chat', messages: [], createdAt: Date.now() }]);
       setActiveConvId(id);
-    } else if (!activeConvId) {
+    } else if (!activeConvId || !conversations.find(c => c.id === activeConvId)) {
       setActiveConvId(conversations[0].id);
     }
-  }, []);
+  }, [convsHydrated]);
 
+  // Auto-select first available model
   useEffect(() => {
     if (!selectedModel && models.length > 0) setSelectedModel(models[0].name);
   }, [models]);
@@ -59,16 +62,25 @@ export default function App() {
     setConversations(prev => prev.map(c => c.id === id ? updater(c) : c));
   }
 
-  // Show first-run wizard if Ollama not ready and setup not completed
-  if (!setupDone || (status === 'offline' && models.length === 0 && !setupDone)) {
+  // Don't render until we know whether setup has been done (avoid flash)
+  if (!setupHydrated) {
+    return (
+      <div className="flex flex-col h-screen bg-[#212121]">
+        <TitleBar minimal />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="w-5 h-5 border-2 border-violet-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
+  // Show first-run wizard if this is a fresh install
+  if (!setupDone) {
     return (
       <div className="flex flex-col h-screen bg-[#212121]">
         <TitleBar minimal />
         <FirstRunWizard
-          onComplete={() => {
-            setSetupDone(true);
-            checkStatus();
-          }}
+          onComplete={() => { setSetupDone(true); checkStatus(); }}
           onSkip={() => setSetupDone(true)}
         />
       </div>

@@ -70,6 +70,7 @@ ipcMain.handle('open-models-folder', () => {
 
 ipcMain.handle('get-server-port', () => serverPort);
 ipcMain.handle('get-version', () => app.getVersion());
+ipcMain.handle('open-external', (_, url) => shell.openExternal(url));
 
 // Auto-install Ollama (Linux only; Windows/Mac open browser)
 ipcMain.handle('install-ollama', async (event) => {

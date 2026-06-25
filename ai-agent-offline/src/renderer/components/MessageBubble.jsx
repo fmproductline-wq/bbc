@@ -2,14 +2,15 @@ import React, { useState, useMemo } from 'react';
 import { marked } from 'marked';
 
 // Custom renderer to add code header with language + copy button hook
+// NOTE: marked v9 passes a single token object, not positional args
 const renderer = new marked.Renderer();
-renderer.code = function(code, lang) {
+renderer.code = function({ text, lang }) {
   const langLabel = lang || 'code';
-  const escaped = code
+  const escaped = (text || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
-  return `<pre data-lang="${langLabel}"><div class="code-header"><span>${langLabel}</span><button class="copy-code-btn" data-code="${encodeURIComponent(code)}">Copy</button></div><code>${escaped}</code></pre>`;
+  return `<pre data-lang="${langLabel}"><div class="code-header"><span>${langLabel}</span><button class="copy-code-btn" data-code="${encodeURIComponent(text || '')}">Copy</button></div><code>${escaped}</code></pre>`;
 };
 
 marked.use({ renderer, breaks: true, gfm: true });

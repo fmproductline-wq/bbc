@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI;
+
+function openExternal(url) {
+  if (isElectron && window.electronAPI.openExternal) {
+    window.electronAPI.openExternal(url);
+  } else {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+}
 const OLLAMA_API = 'http://127.0.0.1:11434';
 
 const STEPS = ['welcome', 'installing', 'model', 'done'];
@@ -71,7 +79,7 @@ export default function FirstRunWizard({ onComplete, onSkip }) {
       log('Downloading Ollama installer for Windows…');
       log('Opening browser to ollama.com/download — install it then come back.');
       log('After installing Ollama, click "Check Again" below.', 'warn');
-      window.open('https://ollama.com/download', '_blank');
+      openExternal('https://ollama.com/download');
       setInstallError('windows-manual');
       return;
     }
@@ -79,7 +87,7 @@ export default function FirstRunWizard({ onComplete, onSkip }) {
     if (isMac) {
       log('Opening Ollama download page for macOS…');
       log('Download and open the .pkg, then click "Check Again".', 'warn');
-      window.open('https://ollama.com/download', '_blank');
+      openExternal('https://ollama.com/download');
       setInstallError('mac-manual');
       return;
     }
