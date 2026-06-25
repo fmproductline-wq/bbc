@@ -69,14 +69,19 @@ class TrailingStopMonitor:
             if not entry or not tp1:
                 continue
 
-            is_long = pos.amount_out > 0
+            if sl is None:
+                continue
+
+            # Direction: long if stop is below entry, short if above
+            is_long = sl < entry
 
             # Check if TP1 hit and stop still below entry (long) / above entry (short)
             tp1_hit = (price >= tp1) if is_long else (price <= tp1)
             sl_not_moved = (sl < entry) if is_long else (sl > entry)
 
+            size = getattr(pos, "size", None) or getattr(pos, "amount_out", 0)
             if tp1_hit and sl_not_moved:
-                await self._move_to_breakeven(ticker, entry, pos.size, is_long)
+                await self._move_to_breakeven(ticker, entry, size, is_long)
                 self._moved.add(ticker)
                 # Update the in-memory position
                 pos.stop_loss = entry

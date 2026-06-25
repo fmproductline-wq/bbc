@@ -259,7 +259,7 @@ async def manual_long(coin: str, size: float, leverage: int | None = None) -> st
             except Exception:
                 pass
         try:
-            fee = collect_fee(coin, size, price or size, "long")
+            fee = collect_fee(coin, size, price if price else 0.0, "long")
             fee_str = f"\nFee: ${fee['fee_usd']:.4f}"
         except Exception:
             fee_str = ""
@@ -302,7 +302,7 @@ async def manual_short(coin: str, size: float, leverage: int | None = None) -> s
             except Exception:
                 pass
         try:
-            fee = collect_fee(coin, size, price or size, "short")
+            fee = collect_fee(coin, size, price if price else 0.0, "short")
             fee_str = f"\nFee: ${fee['fee_usd']:.4f}"
         except Exception:
             fee_str = ""
@@ -333,7 +333,8 @@ async def manual_close(coin: str) -> str:
         for p in open_pos:
             if not p.closed:
                 close_price = price or p.entry_price
-                pnl_usd = p.amount_in * ((close_price - p.entry_price) / p.entry_price)
+                direction = 1 if (p.stop_loss is None or p.stop_loss < p.entry_price) else -1
+                pnl_usd = p.amount_in * ((close_price - p.entry_price) / p.entry_price) * direction
                 guard.record_trade_pnl(pnl_usd, f"{coin} manual close @ ~${close_price:,.4f}")
                 p.closed = True
                 # Record close in trade history DB (#3)

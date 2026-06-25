@@ -215,6 +215,8 @@ class SignalScanner:
 
                 # ── #7: Risk-% sizing — risk RISK_PCT_PER_TRADE of account ──
                 summary_acc = hl.get_account_summary()
+                if summary_acc is None:
+                    return f"❌ Cannot fetch account balance for {ticker}"
                 acct_val    = float(summary_acc.get("account_value") or 0)
                 risk_usd    = acct_val * (cfg.RISK_PCT_PER_TRADE / 100)
                 sl_dist     = abs(price - sl)

@@ -142,6 +142,9 @@ def backtest_signals(df: pd.DataFrame) -> dict[str, PatternStats]:
     """
     from analysis.market_analyzer import hott_lott, xtreme_trend
 
+    if len(df) <= LOOK_FORWARD + 1:
+        return {}
+
     df = hott_lott(df.copy())
     df = xtreme_trend(df)
 
@@ -226,6 +229,8 @@ def evaluate_current(df: pd.DataFrame, atr_multiplier_sl: float = 1.5,
 
     entry   = float(last["close"])
     atr_val = float(calc_atr(df).iloc[-1])
+    if np.isnan(atr_val) or atr_val <= 0:
+        atr_val = entry * 0.01   # fallback: 1% of price
 
     # Default neutral levels
     sl  = entry - atr_val * atr_multiplier_sl

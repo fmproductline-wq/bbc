@@ -112,8 +112,8 @@ class PnLDashboardTab(ctk.CTkFrame):
 
     def _draw_curve(self, curve: list):
         if self._canvas:
-            self._canvas.get_tk_widget().destroy()
             plt.close(self._fig)
+            self._canvas.get_tk_widget().destroy()
 
         fig, ax = plt.subplots(figsize=(8, 3), facecolor=BG_DARK)
         ax.set_facecolor(BG_DARK)

@@ -331,12 +331,16 @@ async def startup():
     logger.info(f"Signal Scanner started — watching {len(signal_scanner._states)} assets")
 
     # Start Health Monitor — pings Hyperliquid API, alerts on failure (#2)
-    health_monitor.set_notifier(_notify_scanner)
+    async def _notify_health(msg: str):
+        await _notify_telegram(msg)
+    health_monitor.set_notifier(_notify_health)
     asyncio.create_task(health_monitor.start())
     logger.info("Health monitor started")
 
     # Start Trailing Stop Monitor — moves SL to breakeven after TP1 (#10)
-    trailing_stop_monitor.set_notifier(_notify_scanner)
+    async def _notify_trailing(msg: str):
+        await _notify_telegram(msg)
+    trailing_stop_monitor.set_notifier(_notify_trailing)
     asyncio.create_task(trailing_stop_monitor.start())
     logger.info("Trailing stop monitor started")
 

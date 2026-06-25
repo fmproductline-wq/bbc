@@ -21,6 +21,7 @@ Tapping REJECT cancels it.
 No response within 2 minutes → auto-rejected.
 """
 import asyncio
+import functools
 import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -43,6 +44,7 @@ from agents.bug_checker import run_bug_check
 
 
 def auth(func):
+    @functools.wraps(func)
     async def wrapper(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         uid = update.effective_user.id if update.effective_user else 0
         if uid != cfg.TELEGRAM_ALLOWED_USER_ID:
@@ -119,7 +121,6 @@ async def _expire_approval(req: PendingRequest, msg_id: int):
 
 async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     uid = query.from_user.id if query.from_user else 0
 
     data = query.data or ""
@@ -129,6 +130,7 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if uid != cfg.TELEGRAM_ALLOWED_USER_ID:
             await query.answer("⛔ Unauthorized", show_alert=True)
             return
+        await query.answer()
 
         action, req_id = data.split(":", 1)
         approved = (action == "approve")
@@ -151,6 +153,7 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     # ── Navigation callbacks ──────────────────────────────────────────────────
+    await query.answer()
     dispatch = {
         "status":   cmd_status,
         "hlpos":    cmd_hlpos,
