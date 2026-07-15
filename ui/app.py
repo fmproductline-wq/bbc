@@ -97,6 +97,7 @@ class MainApp(ctk.CTk):
             ("Predictions",  "🎰"),
             ("PnL",          "💰"),
             ("Backtest",     "📊"),
+            ("UHRP",         "📦"),
             ("Bug Checker",  "🔍"),
             ("Settings",     "⚙️"),
         ]
@@ -183,6 +184,7 @@ class MainApp(ctk.CTk):
         from ui.tabs.prediction_markets import PredictionMarketsTab
         from ui.tabs.pnl_dashboard      import PnLDashboardTab
         from ui.tabs.backtest           import BacktestTab
+        from ui.tabs.uhrp               import UHRPTab
         from ui.tabs.bug_checker        import BugCheckerTab
         from ui.tabs.settings           import SettingsTab
 
@@ -193,6 +195,7 @@ class MainApp(ctk.CTk):
             "Predictions": PredictionMarketsTab,
             "PnL":         PnLDashboardTab,
             "Backtest":    BacktestTab,
+            "UHRP":        UHRPTab,
             "Bug Checker": BugCheckerTab,
             "Settings":    SettingsTab,
         }
