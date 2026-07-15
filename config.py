@@ -43,6 +43,13 @@ class Config:
     # Metaculus
     METACULUS_TOKEN: str = os.getenv("METACULUS_TOKEN", "")
 
+    # UHRP document storage (nanostore) — upload requires a running, funded
+    # BRC-100 wallet (e.g. MetaNet Desktop) reachable by the Node.js helper
+    # in uhrp_node/; download does not.
+    UHRP_STORAGE_URL: str = os.getenv("UHRP_STORAGE_URL", "https://nanostore.babbage.systems")
+    UHRP_NETWORK_PRESET: str = os.getenv("UHRP_NETWORK_PRESET", "mainnet")
+    UHRP_RETENTION_MINUTES: int = int(os.getenv("UHRP_RETENTION_MINUTES", "43200"))  # 30 days
+
     # Stripe payments
     STRIPE_SECRET_KEY: str       = os.getenv("STRIPE_SECRET_KEY", "")
     STRIPE_PUBLISHABLE_KEY: str  = os.getenv("STRIPE_PUBLISHABLE_KEY", "")

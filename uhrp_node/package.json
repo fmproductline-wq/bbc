@@ -1,0 +1,15 @@
+{
+  "name": "bbc-uhrp-node",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Node.js helper for UHRP upload/download. Exists because paying a UHRP storage invoice requires signing a BSV transaction with a BRC-100 wallet, and that signing logic only has a maintained implementation in @bsv/sdk (JS/TS) — there is no Python equivalent.",
+  "scripts": {
+    "upload": "node upload.mjs",
+    "resolve": "node resolve.mjs",
+    "download": "node download.mjs"
+  },
+  "dependencies": {
+    "@bsv/sdk": "^2.1.6"
+  }
+}

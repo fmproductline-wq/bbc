@@ -96,6 +96,11 @@ ngrok http 8000
 | `/metapredict <question_id> <0.0-1.0>` | Submit forecast |
 | `/analyze <coin> [interval]` | Run market analysis |
 | `/bugcheck` | Run diagnostic checks |
+| `/uhrpupload [minutes]` | Reply to a photo/document to publish it to UHRP storage |
+| `/uhrpdownload <uhrp_url>` | Fetch, hash-verify, and log a UHRP file, then send it back |
+| `/uhrpresolve <uhrp_url>` | Refresh the direct download link for a ledger entry |
+| `/uhrpledger` | Send the Excel ledger file (`~/.bestbrand/uhrp_ledger.xlsx`) |
+| `/uhrplist [n]` | Show the last n ledger entries |
 
 ---
 
@@ -124,6 +129,32 @@ Desktop UI (CustomTkinter)
 
 ---
 
+## UHRP Document Ledger
+
+Upload and download documents/images to [UHRP](https://hub.bsvblockchain.org/brc/overlays/0026) (Universal Hash Resolution Protocol) storage from Telegram. Every upload/download is logged as a row in an Excel ledger with the filename, SHA-256 hash, the `uhrp://` URL, a clickable direct link back to the file, and an embedded thumbnail for images.
+
+**Why there's a `uhrp_node/` folder:** publishing a file to UHRP pays the storage host's invoice, which requires signing a BSV transaction through a BRC-100 wallet. That payment/signing logic is only implemented in Babbage's `@bsv/sdk` (JS/TS) — there's no Python equivalent — so the bot shells out to a small Node.js helper for the actual upload/resolve/download calls. Everything else (Telegram commands, the ledger, file handling) is Python.
+
+### Setup
+
+```bash
+cd uhrp_node
+npm install
+```
+
+**Uploading** (`/uhrpupload`) requires a running, funded [BRC-100 wallet](https://github.com/bsv-blockchain/wallet-toolbox-examples) (e.g. MetaNet Desktop) reachable on this machine — that's what actually pays the storage host. **Downloading** (`/uhrpdownload`) needs no wallet; it's a free overlay-network lookup + hash-verified fetch.
+
+By default the bot publishes to `https://nanostore.babbage.systems` (override with `UHRP_STORAGE_URL` in `.env`).
+
+### Usage
+
+- Send or reply to a photo/document with `/uhrpupload` to publish it and log it.
+- `/uhrpdownload <uhrp_url>` fetches a file by its UHRP URL, verifies its hash, logs it, and sends it back.
+- `/uhrpledger` sends you the ledger spreadsheet itself.
+- Direct links resolve right after upload when possible; if the advertisement hasn't propagated yet, run `/uhrpresolve <uhrp_url>` to backfill the clickable link once it's ready.
+
+---
+
 ## Data stored locally
 
 All data is kept on your device under `~/.bestbrand/`:
@@ -133,6 +164,8 @@ All data is kept on your device under `~/.bestbrand/`:
 | `registry.json` | Install ID, age verification, T&C acceptance |
 | `installs.log` | Per-event acceptance log |
 | `fees.jsonl` | Fee ledger (one JSON line per trade) |
+| `uhrp_ledger.xlsx` | UHRP upload/download ledger (hash, URL, thumbnail) |
+| `uhrp_files/` | Local cache of uploaded/downloaded UHRP files |
 
 ---
 

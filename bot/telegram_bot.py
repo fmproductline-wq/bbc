@@ -977,7 +977,13 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/kalshi <query>\n"
         "/kalshiorder <ticker> <yes|no> <buy|sell> <count> <¢>\n"
         "/meta <query>\n"
-        "/metapredict <id> <0-1>",
+        "/metapredict <id> <0-1>\n\n"
+        "*📒 UHRP Document Ledger:*\n"
+        "/uhrpupload [minutes] — reply to a photo/document to publish it\n"
+        "/uhrpdownload <uhrp_url> — fetch, verify, and log a file\n"
+        "/uhrpresolve <uhrp_url> — refresh the direct link\n"
+        "/uhrpledger — send the Excel ledger file\n"
+        "/uhrplist [n] — show recent ledger entries",
         parse_mode="Markdown",
     )
 
@@ -1040,6 +1046,195 @@ async def cmd_history(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ {e}")
 
 
+# ── UHRP Document Ledger ─────────────────────────────────────────────────────
+
+@auth
+async def cmd_uhrpupload(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """
+    Upload a photo/document to UHRP storage and log it in the Excel ledger.
+    Send a photo/document with caption /uhrpupload, or reply to one with
+    /uhrpupload [retention_minutes].
+    """
+    msg = update.message
+    reply = msg.reply_to_message
+    src = reply if (reply and (reply.photo or reply.document)) else msg
+
+    photo = src.photo[-1] if src.photo else None
+    document = src.document
+    if not photo and not document:
+        await msg.reply_text(
+            "Attach a photo/document with /uhrpupload, or reply to one with "
+            "/uhrpupload [retention_minutes]"
+        )
+        return
+
+    retention_minutes = None
+    if ctx.args:
+        try:
+            retention_minutes = int(ctx.args[0])
+        except ValueError:
+            pass
+
+    from uhrp import client as uhrp_client, ledger as uhrp_ledger
+    uhrp_ledger.ensure_dirs()
+
+    tg_file = await (photo or document).get_file()
+    filename = getattr(document, "file_name", None) or f"photo_{tg_file.file_unique_id}.jpg"
+    local_path = uhrp_ledger.FILES_DIR / filename
+    await tg_file.download_to_drive(str(local_path))
+
+    await msg.reply_text(f"⬆️ Uploading `{filename}` to UHRP…", parse_mode="Markdown")
+
+    try:
+        result = await asyncio.to_thread(uhrp_client.upload_file, str(local_path), retention_minutes)
+    except uhrp_client.UHRPError as e:
+        await msg.reply_text(f"❌ UHRP upload failed: {e}")
+        return
+
+    uhrp_url = result["uhrpURL"]
+    direct_link = None
+    try:
+        urls = await asyncio.to_thread(uhrp_client.resolve_url, uhrp_url)
+        direct_link = urls[0] if urls else None
+    except uhrp_client.UHRPError:
+        pass
+
+    row = uhrp_ledger.add_entry(
+        direction="UPLOAD",
+        filename=filename,
+        content_type=result.get("mimeType", ""),
+        size=result.get("size", 0),
+        sha256=result.get("sha256", ""),
+        uhrp_url=uhrp_url,
+        direct_link=direct_link,
+        hosted_by=result.get("hostedBy", []),
+        local_path=str(local_path),
+        requested_by=update.effective_user.username or str(update.effective_user.id),
+    )
+
+    lines = [f"✅ *Uploaded to UHRP* (ledger row {row})", f"`{filename}`", f"UHRP URL: `{uhrp_url}`"]
+    if direct_link:
+        lines.append(f"[Direct link]({direct_link})")
+    else:
+        lines.append("Direct link pending — run /uhrpresolve once it propagates.")
+    await msg.reply_text("\n".join(lines), parse_mode="Markdown", disable_web_page_preview=True)
+
+
+@auth
+async def cmd_uhrpdownload(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Usage: /uhrpdownload <uhrp_url> — downloads, verifies, logs, and sends the file back."""
+    if not ctx.args:
+        await update.message.reply_text("Usage: /uhrpdownload <uhrp_url>")
+        return
+    uhrp_url = ctx.args[0]
+
+    from uhrp import client as uhrp_client, ledger as uhrp_ledger
+    uhrp_ledger.ensure_dirs()
+
+    await update.message.reply_text(f"⬇️ Downloading `{uhrp_url}`…", parse_mode="Markdown")
+
+    import mimetypes
+    short_hash = uhrp_url.replace("uhrp://", "").replace("uhrp:", "")[:16] or "uhrp_file"
+    tmp_path = uhrp_ledger.FILES_DIR / short_hash
+
+    try:
+        result = await asyncio.to_thread(uhrp_client.download_file, uhrp_url, str(tmp_path))
+    except uhrp_client.UHRPError as e:
+        await update.message.reply_text(f"❌ UHRP download failed: {e}")
+        return
+
+    mime_type = result.get("mimeType") or "application/octet-stream"
+    ext = mimetypes.guess_extension(mime_type) or ""
+    filename = f"{short_hash}{ext}"
+    final_path = uhrp_ledger.FILES_DIR / filename
+    tmp_path.rename(final_path)
+
+    row = uhrp_ledger.add_entry(
+        direction="DOWNLOAD",
+        filename=filename,
+        content_type=mime_type,
+        size=result.get("size", 0),
+        sha256=uhrp_client.local_sha256(str(final_path)),
+        uhrp_url=uhrp_url,
+        direct_link=None,
+        hosted_by=[],
+        local_path=str(final_path),
+        requested_by=update.effective_user.username or str(update.effective_user.id),
+    )
+
+    try:
+        urls = await asyncio.to_thread(uhrp_client.resolve_url, uhrp_url)
+        if urls:
+            uhrp_ledger.update_direct_link(uhrp_url, urls[0])
+    except uhrp_client.UHRPError:
+        pass
+
+    with open(final_path, "rb") as f:
+        if mime_type.startswith("image/"):
+            await update.message.reply_photo(photo=f, caption=f"✅ Downloaded (ledger row {row})")
+        else:
+            await update.message.reply_document(document=f, filename=filename, caption=f"✅ Downloaded (ledger row {row})")
+
+
+@auth
+async def cmd_uhrpresolve(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Usage: /uhrpresolve <uhrp_url> — re-fetches the direct link and backfills the ledger."""
+    if not ctx.args:
+        await update.message.reply_text("Usage: /uhrpresolve <uhrp_url>")
+        return
+    uhrp_url = ctx.args[0]
+
+    from uhrp import client as uhrp_client, ledger as uhrp_ledger
+    try:
+        urls = await asyncio.to_thread(uhrp_client.resolve_url, uhrp_url)
+    except uhrp_client.UHRPError as e:
+        await update.message.reply_text(f"❌ Resolve failed: {e}")
+        return
+
+    if not urls:
+        await update.message.reply_text("No hosts currently serving this file.")
+        return
+
+    updated = uhrp_ledger.update_direct_link(uhrp_url, urls[0])
+    await update.message.reply_text(
+        f"🔗 [Direct link]({urls[0]})\nUpdated {updated} ledger row(s).",
+        parse_mode="Markdown",
+        disable_web_page_preview=True,
+    )
+
+
+@auth
+async def cmd_uhrpledger(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Sends the UHRP Excel ledger file itself."""
+    from uhrp import ledger as uhrp_ledger
+    path = uhrp_ledger.get_ledger_path()
+    with open(path, "rb") as f:
+        await update.message.reply_document(document=f, filename=path.name, caption="📒 UHRP document ledger")
+
+
+@auth
+async def cmd_uhrplist(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Usage: /uhrplist [n] — shows the last n ledger entries (default 10)."""
+    limit = 10
+    if ctx.args:
+        try:
+            limit = int(ctx.args[0])
+        except ValueError:
+            pass
+
+    from uhrp import ledger as uhrp_ledger
+    entries = uhrp_ledger.recent_entries(limit)
+    if not entries:
+        await update.message.reply_text("Ledger is empty. Use /uhrpupload or /uhrpdownload first.")
+        return
+
+    lines = ["📒 *Recent UHRP entries*"]
+    for e in entries:
+        icon = "⬆️" if e["Direction"] == "UPLOAD" else "⬇️"
+        lines.append(f"{icon} `{e['Date']}` {e['Filename']} — `{e['UHRP URL'][:24]}…`")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
 # ── App builder ───────────────────────────────────────────────────────────────
 
 def build_app():
@@ -1095,6 +1290,11 @@ def build_app():
         ("polyresearch",    cmd_polyresearch),
         ("polybotstatus",   cmd_polybotstatus),
         ("polybet",         cmd_polybet),
+        ("uhrpupload",      cmd_uhrpupload),
+        ("uhrpdownload",    cmd_uhrpdownload),
+        ("uhrpresolve",     cmd_uhrpresolve),
+        ("uhrpledger",      cmd_uhrpledger),
+        ("uhrplist",        cmd_uhrplist),
     ]
     for name, handler in handlers:
         app.add_handler(CommandHandler(name, handler))
