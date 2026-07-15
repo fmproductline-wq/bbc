@@ -979,6 +979,7 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/meta <query>\n"
         "/metapredict <id> <0-1>\n\n"
         "*📒 UHRP Document Ledger:*\n"
+        "/uhrpwallet — check the connected BRC-100 wallet (e.g. Metanet Client)\n"
         "/uhrpupload [minutes] — reply to a photo/document to publish it\n"
         "/uhrpdownload <uhrp_url> — fetch, verify, and log a file\n"
         "/uhrpresolve <uhrp_url> — refresh the direct link\n"
@@ -1047,6 +1048,31 @@ async def cmd_history(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ── UHRP Document Ledger ─────────────────────────────────────────────────────
+
+@auth
+async def cmd_uhrpwallet(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Pings the configured BRC-100 wallet (e.g. Metanet Client) — no funds moved."""
+    from uhrp import client as uhrp_client
+    await update.message.reply_text("🔌 Checking wallet connection…")
+    try:
+        result = await asyncio.to_thread(uhrp_client.check_wallet)
+    except uhrp_client.UHRPError as e:
+        await update.message.reply_text(
+            f"❌ No wallet reachable: {e}\n\n"
+            f"Make sure Metanet Client (or another BRC-100 wallet) is running "
+            f"on this machine and unlocked."
+        )
+        return
+
+    lines = [
+        "✅ *Wallet connected*",
+        f"Version: `{result.get('version')}`",
+        f"Originator: `{result.get('originator')}`",
+    ]
+    if result.get("identityKey"):
+        lines.append(f"Identity key: `{result['identityKey'][:16]}…`")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
 
 @auth
 async def cmd_uhrpupload(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -1290,6 +1316,7 @@ def build_app():
         ("polyresearch",    cmd_polyresearch),
         ("polybotstatus",   cmd_polybotstatus),
         ("polybet",         cmd_polybet),
+        ("uhrpwallet",      cmd_uhrpwallet),
         ("uhrpupload",      cmd_uhrpupload),
         ("uhrpdownload",    cmd_uhrpdownload),
         ("uhrpresolve",     cmd_uhrpresolve),

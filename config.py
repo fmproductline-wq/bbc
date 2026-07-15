@@ -49,6 +49,9 @@ class Config:
     UHRP_STORAGE_URL: str = os.getenv("UHRP_STORAGE_URL", "https://nanostore.babbage.systems")
     UHRP_NETWORK_PRESET: str = os.getenv("UHRP_NETWORK_PRESET", "mainnet")
     UHRP_RETENTION_MINUTES: int = int(os.getenv("UHRP_RETENTION_MINUTES", "43200"))  # 30 days
+    # Domain-like app identifier shown in the wallet's permission prompt.
+    # Required by WalletClient's HTTP substrate when connecting from Node.js.
+    UHRP_WALLET_ORIGINATOR: str = os.getenv("UHRP_WALLET_ORIGINATOR", "bestbrand.ca")
 
     # Stripe payments
     STRIPE_SECRET_KEY: str       = os.getenv("STRIPE_SECRET_KEY", "")

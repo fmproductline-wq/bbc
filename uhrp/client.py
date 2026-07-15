@@ -14,6 +14,7 @@ those are free overlay-network reads.
 from __future__ import annotations
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -28,7 +29,7 @@ class UHRPError(Exception):
     pass
 
 
-def _run_node(script: str, args: list[str], timeout: int) -> dict:
+def _run_node(script: str, args: list[str], timeout: int, env: Optional[dict] = None) -> dict:
     if shutil.which("node") is None:
         raise UHRPError(
             "Node.js is not installed. UHRP upload/download needs Node 18+ "
@@ -36,9 +37,10 @@ def _run_node(script: str, args: list[str], timeout: int) -> dict:
         )
 
     cmd = ["node", str(_NODE_DIR / script), *args]
+    run_env = {**os.environ, **(env or {})}
     try:
         proc = subprocess.run(
-            cmd, cwd=_NODE_DIR, capture_output=True, text=True, timeout=timeout
+            cmd, cwd=_NODE_DIR, capture_output=True, text=True, timeout=timeout, env=run_env
         )
     except subprocess.TimeoutExpired:
         raise UHRPError(f"{script} timed out after {timeout}s")
@@ -69,7 +71,14 @@ def upload_file(
     args = [file_path, str(retention_minutes)]
     if storage_url:
         args.append(storage_url)
-    return _run_node("upload.mjs", args, timeout=180)
+    env = {"UHRP_WALLET_ORIGINATOR": cfg.UHRP_WALLET_ORIGINATOR}
+    return _run_node("upload.mjs", args, timeout=180, env=env)
+
+
+def check_wallet() -> dict:
+    """Pings the configured BRC-100 wallet (no funds moved). Returns dict with version, identityKey."""
+    env = {"UHRP_WALLET_ORIGINATOR": cfg.UHRP_WALLET_ORIGINATOR}
+    return _run_node("checkwallet.mjs", [], timeout=30, env=env)
 
 
 def resolve_url(uhrp_url: str) -> list[str]:

@@ -96,6 +96,7 @@ ngrok http 8000
 | `/metapredict <question_id> <0.0-1.0>` | Submit forecast |
 | `/analyze <coin> [interval]` | Run market analysis |
 | `/bugcheck` | Run diagnostic checks |
+| `/uhrpwallet` | Check the connected BRC-100 wallet (e.g. Metanet Client) — no funds moved |
 | `/uhrpupload [minutes]` | Reply to a photo/document to publish it to UHRP storage |
 | `/uhrpdownload <uhrp_url>` | Fetch, hash-verify, and log a UHRP file, then send it back |
 | `/uhrpresolve <uhrp_url>` | Refresh the direct download link for a ledger entry |
@@ -142,12 +143,15 @@ cd uhrp_node
 npm install
 ```
 
-**Uploading** (`/uhrpupload`) requires a running, funded [BRC-100 wallet](https://github.com/bsv-blockchain/wallet-toolbox-examples) (e.g. MetaNet Desktop) reachable on this machine — that's what actually pays the storage host. **Downloading** (`/uhrpdownload`) needs no wallet; it's a free overlay-network lookup + hash-verified fetch.
+**Uploading** (`/uhrpupload`) requires a running, funded [BRC-100 wallet](https://github.com/bsv-blockchain/wallet-toolbox-examples) — e.g. [Metanet Client](https://metanetapps.com/) — running on the **same machine** as this bot. It's what actually pays the storage host's invoice. **Downloading** (`/uhrpdownload`) needs no wallet; it's a free overlay-network lookup + hash-verified fetch.
 
-By default the bot publishes to `https://nanostore.babbage.systems` (override with `UHRP_STORAGE_URL` in `.env`).
+Open and unlock Metanet Client, then run `/uhrpwallet` from Telegram to confirm the bot can reach it before trying a real upload — no funds move on that check. The first real upload will likely trigger a permission prompt inside Metanet Client; approve it there.
+
+By default the bot publishes to `https://nanostore.babbage.systems` (override with `UHRP_STORAGE_URL` in `.env`). `UHRP_WALLET_ORIGINATOR` (default `bestbrand.ca`) is the app name shown in the wallet's permission prompt — any domain-shaped string works.
 
 ### Usage
 
+- `/uhrpwallet` — verify the bot can reach your wallet.
 - Send or reply to a photo/document with `/uhrpupload` to publish it and log it.
 - `/uhrpdownload <uhrp_url>` fetches a file by its UHRP URL, verifies its hash, logs it, and sends it back.
 - `/uhrpledger` sends you the ledger spreadsheet itself.

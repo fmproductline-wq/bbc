@@ -2,9 +2,16 @@
 //
 // Usage: node upload.mjs <filePath> <retentionMinutes> [storageURL]
 //
-// Requires a running, funded BRC-100 wallet (e.g. MetaNet Desktop) reachable
+// Requires a running, funded BRC-100 wallet (e.g. Metanet Client) reachable
 // over the default WalletClient substrate — StorageUploader pays the storage
 // host's invoice through that wallet before the file is accepted.
+//
+// WalletClient's HTTP substrates (what Metanet Client and most desktop BRC-100
+// wallets expose locally) REQUIRE an `originator` — a domain-like string
+// identifying this app — when connecting from Node.js; without one the
+// substrate throws immediately instead of falling through. Set it via the
+// UHRP_WALLET_ORIGINATOR env var (see config.py); it's what shows up in the
+// wallet's permission prompt.
 import fs from 'node:fs'
 import crypto from 'node:crypto'
 import { WalletClient, StorageUploader } from '@bsv/sdk'
@@ -24,13 +31,15 @@ async function main () {
     return
   }
 
+  const originator = process.env.UHRP_WALLET_ORIGINATOR || 'localhost'
+
   try {
     const data = fs.readFileSync(filePath)
     const bytes = new Uint8Array(data)
     const sha256 = crypto.createHash('sha256').update(data).digest('hex')
     const mimeType = mimeForPath(filePath)
 
-    const wallet = new WalletClient()
+    const wallet = new WalletClient('auto', originator)
     const uploader = new StorageUploader(storageURL ? { storageURL, wallet } : { wallet })
 
     const result = await uploader.publishFile({
