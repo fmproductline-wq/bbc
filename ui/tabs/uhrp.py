@@ -64,7 +64,7 @@ class UHRPTab(ctk.CTkFrame):
         self.columnconfigure(1, weight=2)
         self.rowconfigure(0, weight=1)
 
-        left = ctk.CTkFrame(self, fg_color="transparent")
+        left = ctk.CTkScrollableFrame(self, fg_color="transparent")
         left.grid(row=0, column=0, sticky="nsew", padx=(PAD, 4), pady=PAD)
 
         right = ctk.CTkFrame(self, fg_color="transparent")
@@ -77,6 +77,7 @@ class UHRPTab(ctk.CTkFrame):
         self._build_upload_card(left)
         self._build_download_card(left)
         self._build_ledger_card(left)
+        self._build_manage_card(left)
         self._build_queue(right)
         self._build_activity(right)
 
@@ -193,6 +194,84 @@ class UHRPTab(ctk.CTkFrame):
         from uhrp import ledger as uhrp_ledger
         uhrp_ledger.ensure_dirs()
         _open_path(str(uhrp_ledger.FILES_DIR))
+
+    # ── Left: Manage hosted files (sync + renew) ──────────────────────────────
+
+    def _build_manage_card(self, parent):
+        card = Card(parent, title="Manage Hosted Files")
+        card.pack(fill="x", pady=(12, 0))
+        pad = ctk.CTkFrame(card, fg_color="transparent")
+        pad.pack(fill="x", padx=PAD, pady=(0, PAD))
+
+        ctk.CTkLabel(
+            pad, text="Pulls your actual file list from the storage host and "
+                      "reconciles it into the ledger — catches anything not "
+                      "already logged and refreshes expiry/status.",
+            font=FONT_SMALL, text_color=TEXT_MUTED, wraplength=240, justify="left", anchor="w",
+        ).pack(fill="x", pady=(0, 8))
+        ctk.CTkButton(pad, text="🔄  Sync from Host", fg_color=BG_INPUT, text_color=ACCENT,
+                      hover_color=BORDER, font=FONT_BODY, command=self._sync_from_host).pack(fill="x")
+
+        ctk.CTkFrame(pad, height=1, fg_color=BORDER).pack(fill="x", pady=10)
+
+        ctk.CTkLabel(pad, text="Renew (extend hosting)", font=FONT_SMALL,
+                     text_color=TEXT_SECONDARY, anchor="w").pack(fill="x")
+        self.renew_url_entry = ctk.CTkEntry(pad, fg_color=BG_INPUT, border_color=BORDER,
+                                             text_color=TEXT_PRIMARY, font=FONT_SMALL,
+                                             placeholder_text="uhrp://…")
+        self.renew_url_entry.pack(fill="x", pady=(2, 4))
+        self.renew_minutes_entry = ctk.CTkEntry(pad, fg_color=BG_INPUT, border_color=BORDER,
+                                                 text_color=TEXT_PRIMARY, font=FONT_SMALL,
+                                                 placeholder_text="Additional minutes (e.g. 43200)")
+        self.renew_minutes_entry.pack(fill="x", pady=(0, 6))
+        ctk.CTkButton(pad, text="⏳  Renew", fg_color=BG_INPUT, text_color=ACCENT,
+                      hover_color=BORDER, font=FONT_BODY, command=self._renew).pack(fill="x")
+
+    def _sync_from_host(self):
+        threading.Thread(target=self._run_sync, daemon=True).start()
+
+    def _run_sync(self):
+        from uhrp import client as uhrp_client, sync as uhrp_sync
+        self.after(0, self._log, "Syncing ledger with UHRP host…", "INFO")
+        try:
+            result = uhrp_sync.sync_from_host(
+                "desktop-ui", on_progress=lambda msg: self.after(0, self._log, msg, "DEFAULT")
+            )
+        except uhrp_client.UHRPError as e:
+            self.after(0, self._log, f"❌ Sync failed: {e}", "ERROR")
+            return
+        self.after(0, self._log,
+                    f"✅ Sync complete — {result['updated']} updated, {result['added']} added.", "SUCCESS")
+        if result["errors"]:
+            self.after(0, self._log, f"⚠️ {len(result['errors'])} file(s) had lookup errors.", "WARNING")
+
+    def _renew(self):
+        uhrp_url = self.renew_url_entry.get().strip()
+        minutes_raw = self.renew_minutes_entry.get().strip()
+        if not uhrp_url or not minutes_raw:
+            self._log("Enter a UHRP URL and additional minutes to renew.", "WARNING")
+            return
+        try:
+            minutes = int(minutes_raw)
+        except ValueError:
+            self._log("Additional minutes must be a whole number.", "WARNING")
+            return
+        threading.Thread(target=self._run_renew, args=(uhrp_url, minutes), daemon=True).start()
+
+    def _run_renew(self, uhrp_url: str, minutes: int):
+        from uhrp import client as uhrp_client, ledger as uhrp_ledger
+        self.after(0, self._log, f"Renewing {uhrp_url}…", "INFO")
+        try:
+            result = uhrp_client.renew_file(uhrp_url, minutes)
+        except uhrp_client.UHRPError as e:
+            self.after(0, self._log, f"❌ Renew failed: {e}", "ERROR")
+            return
+        new_expiry = result.get("newExpiryTime")
+        if new_expiry:
+            uhrp_ledger.update_expiry(uhrp_url, new_expiry)
+        self.after(0, self._log,
+                    f"✅ Renewed — paid {result.get('amount', '?')} sats, new expiry {new_expiry or 'unknown'}",
+                    "SUCCESS")
 
     # ── Right: File queue table ───────────────────────────────────────────────
 

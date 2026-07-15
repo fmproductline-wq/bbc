@@ -984,7 +984,9 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/uhrpdownload <uhrp_url> — fetch, verify, and log a file\n"
         "/uhrpresolve <uhrp_url> — refresh the direct link\n"
         "/uhrpledger — send the Excel ledger file\n"
-        "/uhrplist [n] — show recent ledger entries",
+        "/uhrplist [n] — show recent ledger entries\n"
+        "/uhrpsync — reconcile the ledger with your actual hosted files\n"
+        "/uhrprenew <uhrp_url> <minutes> — extend a file's hosting",
         parse_mode="Markdown",
     )
 
@@ -1239,6 +1241,65 @@ async def cmd_uhrpledger(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 @auth
+async def cmd_uhrpsync(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """
+    Reconciles the ledger against the wallet's actual hosted file list —
+    refreshes expiry/status for known rows and adds any file hosted
+    elsewhere that the ledger doesn't know about yet.
+    """
+    from uhrp import client as uhrp_client
+    from uhrp import sync as uhrp_sync
+
+    await update.message.reply_text("🔄 Syncing ledger with UHRP host…")
+    try:
+        result = await asyncio.to_thread(
+            uhrp_sync.sync_from_host,
+            update.effective_user.username or str(update.effective_user.id),
+        )
+    except uhrp_client.UHRPError as e:
+        await update.message.reply_text(f"❌ Sync failed: {e}")
+        return
+
+    lines = [
+        "✅ *Sync complete*",
+        f"Updated: {result['updated']}  |  Added: {result['added']}",
+    ]
+    if result["errors"]:
+        lines.append(f"⚠️ {len(result['errors'])} file(s) had lookup errors.")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+@auth
+async def cmd_uhrprenew(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Usage: /uhrprenew <uhrp_url> <additional_minutes> — extends hosting, pays via the wallet."""
+    if len(ctx.args) < 2:
+        await update.message.reply_text("Usage: /uhrprenew <uhrp_url> <additional_minutes>")
+        return
+    uhrp_url = ctx.args[0]
+    try:
+        additional_minutes = int(ctx.args[1])
+    except ValueError:
+        await update.message.reply_text("additional_minutes must be an integer.")
+        return
+
+    from uhrp import client as uhrp_client, ledger as uhrp_ledger
+    await update.message.reply_text(f"⏳ Renewing `{uhrp_url}`…", parse_mode="Markdown")
+    try:
+        result = await asyncio.to_thread(uhrp_client.renew_file, uhrp_url, additional_minutes)
+    except uhrp_client.UHRPError as e:
+        await update.message.reply_text(f"❌ Renew failed: {e}")
+        return
+
+    new_expiry = result.get("newExpiryTime")
+    if new_expiry:
+        uhrp_ledger.update_expiry(uhrp_url, new_expiry)
+    await update.message.reply_text(
+        f"✅ Renewed. New expiry: `{new_expiry or 'unknown'}`  |  Paid: `{result.get('amount', '?')} sats`",
+        parse_mode="Markdown",
+    )
+
+
+@auth
 async def cmd_uhrplist(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Usage: /uhrplist [n] — shows the last n ledger entries (default 10)."""
     limit = 10
@@ -1322,6 +1383,8 @@ def build_app():
         ("uhrpresolve",     cmd_uhrpresolve),
         ("uhrpledger",      cmd_uhrpledger),
         ("uhrplist",        cmd_uhrplist),
+        ("uhrpsync",        cmd_uhrpsync),
+        ("uhrprenew",       cmd_uhrprenew),
     ]
     for name, handler in handlers:
         app.add_handler(CommandHandler(name, handler))

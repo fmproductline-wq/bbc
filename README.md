@@ -102,6 +102,8 @@ ngrok http 8000
 | `/uhrpresolve <uhrp_url>` | Refresh the direct download link for a ledger entry |
 | `/uhrpledger` | Send the Excel ledger file (`~/.bestbrand/uhrp_ledger.xlsx`) |
 | `/uhrplist [n]` | Show the last n ledger entries |
+| `/uhrpsync` | Reconcile the ledger against your actual hosted files (adds anything missing, refreshes expiry) |
+| `/uhrprenew <uhrp_url> <minutes>` | Extend a file's hosting commitment, pays via the wallet |
 
 ---
 
@@ -125,14 +127,16 @@ FastAPI Server (/webhook/tradingview)
                 └── Reject  → cancelled, notification sent
 
 Desktop UI (CustomTkinter)
-  Dashboard | Trading | Analysis | Predictions | Bug Checker | Settings
+  Dashboard | Trading | Analysis | Predictions | UHRP | Bug Checker | Settings
 ```
 
 ---
 
 ## UHRP Document Ledger
 
-Upload and download documents/images to [UHRP](https://hub.bsvblockchain.org/brc/overlays/0026) (Universal Hash Resolution Protocol) storage from Telegram. Every upload/download is logged as a row in an Excel ledger with the filename, SHA-256 hash, the `uhrp://` URL, a clickable direct link back to the file, and an embedded thumbnail for images.
+Upload and download documents/images to [UHRP](https://hub.bsvblockchain.org/brc/overlays/0026) (Universal Hash Resolution Protocol) storage from Telegram or the desktop app's **UHRP** tab. Every upload/download is logged as a row in an Excel ledger with the filename, content type, size, SHA-256 hash, the `uhrp://` URL, a clickable direct link back to the file, expiry time + status, and an embedded thumbnail for images.
+
+Note on scale: UHRP prices per file — one paid invoice and one URL per upload, no batching in the protocol itself. The desktop app's file queue (Add Files/Add Folder → Upload All) and the ledger's auto-logging remove the manual copy-paste work around that; `/uhrpsync` (or the "Sync from Host" button) reconciles the ledger against your wallet's actual hosted file list in one call, so you never have to cross-check against the storage host's website by hand.
 
 **Why there's a `uhrp_node/` folder:** publishing a file to UHRP pays the storage host's invoice, which requires signing a BSV transaction through a BRC-100 wallet. That payment/signing logic is only implemented in Babbage's `@bsv/sdk` (JS/TS) — there's no Python equivalent — so the bot shells out to a small Node.js helper for the actual upload/resolve/download calls. Everything else (Telegram commands, the ledger, file handling) is Python.
 

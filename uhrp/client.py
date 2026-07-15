@@ -92,6 +92,35 @@ def download_file(uhrp_url: str, out_path: str) -> dict:
     return _run_node("download.mjs", [uhrp_url, out_path, cfg.UHRP_NETWORK_PRESET], timeout=180)
 
 
+def list_uploads(storage_url: Optional[str] = None) -> list[dict]:
+    """
+    Lists every file the wallet's identity has hosted on the storage provider
+    — the same data the storage host's own "Files" view shows. Each entry
+    has at least {uhrpUrl, expiryTime}. Requires the wallet (authenticated route).
+    """
+    storage_url = storage_url or cfg.UHRP_STORAGE_URL
+    args = [storage_url] if storage_url else []
+    env = {"UHRP_WALLET_ORIGINATOR": cfg.UHRP_WALLET_ORIGINATOR}
+    data = _run_node("list.mjs", args, timeout=60, env=env)
+    return data.get("uploads") or []
+
+
+def find_file(uhrp_url: str, storage_url: Optional[str] = None) -> dict:
+    """Looks up {name, size, mimeType, expiryTime} for a UHRP URL already on a host."""
+    storage_url = storage_url or cfg.UHRP_STORAGE_URL
+    args = [uhrp_url, storage_url] if storage_url else [uhrp_url]
+    env = {"UHRP_WALLET_ORIGINATOR": cfg.UHRP_WALLET_ORIGINATOR}
+    return _run_node("find.mjs", args, timeout=30, env=env).get("data") or {}
+
+
+def renew_file(uhrp_url: str, additional_minutes: int, storage_url: Optional[str] = None) -> dict:
+    """Extends a file's hosting commitment, paying an additional fee via the wallet."""
+    storage_url = storage_url or cfg.UHRP_STORAGE_URL
+    args = [uhrp_url, str(additional_minutes), storage_url] if storage_url else [uhrp_url, str(additional_minutes)]
+    env = {"UHRP_WALLET_ORIGINATOR": cfg.UHRP_WALLET_ORIGINATOR}
+    return _run_node("renew.mjs", args, timeout=60, env=env)
+
+
 def local_sha256(file_path: str) -> str:
     h = hashlib.sha256()
     with open(file_path, "rb") as f:

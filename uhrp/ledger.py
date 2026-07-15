@@ -32,6 +32,8 @@ HEADERS = [
     "SHA-256 Hash",
     "UHRP URL",
     "Direct Link",
+    "Expiry Time",
+    "Status",
     "Hosted By",
     "Local Path",
     "Requested By",
@@ -57,7 +59,7 @@ def _new_workbook() -> Workbook:
     for i, name in enumerate(HEADERS, start=1):
         cell = ws.cell(row=1, column=i)
         cell.font = cell.font.copy(bold=True)
-    widths = [17, 10, 28, 22, 12, 20, 30, 30, 24, 34, 16, 10]
+    widths = [17, 10, 28, 22, 12, 20, 30, 30, 17, 10, 24, 34, 16, 10]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
     ws.freeze_panes = "A2"
@@ -94,6 +96,18 @@ def _thumbnail_bytes(local_path: str) -> Optional[bytes]:
         return None
 
 
+def _format_expiry(expiry_time: Optional[int]) -> str:
+    if not expiry_time:
+        return ""
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(expiry_time))
+
+
+def _status_for(expiry_time: Optional[int]) -> str:
+    if not expiry_time:
+        return ""
+    return "Active" if expiry_time > time.time() else "Expired"
+
+
 def add_entry(
     direction: str,
     filename: str,
@@ -105,6 +119,7 @@ def add_entry(
     hosted_by: list[str],
     local_path: Optional[str],
     requested_by: str,
+    expiry_time: Optional[int] = None,
 ) -> int:
     """Appends one row to the ledger. Returns the row number written."""
     wb = _open_workbook()
@@ -120,6 +135,8 @@ def add_entry(
         sha256,
         uhrp_url,
         direct_link or "(pending — resolve to get link)",
+        _format_expiry(expiry_time),
+        _status_for(expiry_time),
         ", ".join(hosted_by) if hosted_by else "",
         local_path or "",
         requested_by,
@@ -155,6 +172,32 @@ def update_direct_link(uhrp_url: str, direct_link: str) -> int:
             cell = ws.cell(row=row, column=COL["Direct Link"], value=direct_link)
             cell.hyperlink = direct_link
             cell.style = "Hyperlink"
+            updated += 1
+    if updated:
+        wb.save(LEDGER_PATH)
+    return updated
+
+
+def known_uhrp_urls() -> set[str]:
+    """All UHRP URLs already present in the ledger — used to skip duplicates when syncing."""
+    wb = _open_workbook()
+    ws: Worksheet = wb["UHRP Ledger"]
+    return {
+        ws.cell(row=r, column=COL["UHRP URL"]).value
+        for r in range(2, ws.max_row + 1)
+        if ws.cell(row=r, column=COL["UHRP URL"]).value
+    }
+
+
+def update_expiry(uhrp_url: str, expiry_time: int) -> int:
+    """Backfills Expiry Time + Status for every row matching uhrp_url. Returns rows updated."""
+    wb = _open_workbook()
+    ws: Worksheet = wb["UHRP Ledger"]
+    updated = 0
+    for row in range(2, ws.max_row + 1):
+        if ws.cell(row=row, column=COL["UHRP URL"]).value == uhrp_url:
+            ws.cell(row=row, column=COL["Expiry Time"], value=_format_expiry(expiry_time))
+            ws.cell(row=row, column=COL["Status"], value=_status_for(expiry_time))
             updated += 1
     if updated:
         wb.save(LEDGER_PATH)
