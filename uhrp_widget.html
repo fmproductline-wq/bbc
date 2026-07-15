@@ -1,0 +1,639 @@
+<!--
+  ============================================================
+  BEST BRAND CO. — UHRP DOCUMENT UPLOADER (BACKOFFICE WIDGET)
+  Paste this entire block into any page (e.g. your backoffice /admin page).
+
+  Runs entirely in the browser — no server component. Talks directly to:
+    • Your local BRC-100 wallet (e.g. Metanet Client) for paying uploads
+    • https://nanostore.babbage.systems for UHRP storage
+  via @bsv/sdk loaded from a public CDN (jsDelivr).
+
+  The ledger (upload/download history + thumbnails) is stored in this
+  browser's localStorage, scoped to this page's origin — it does not sync
+  across devices/browsers on its own. Use "Export CSV" to back it up or
+  move it elsewhere.
+  ============================================================
+-->
+
+<style>
+  .bbu-widget {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    max-width: 920px;
+    margin: 0 auto;
+    color: #FFFFFF;
+  }
+  .bbu-widget * { box-sizing: border-box; }
+  .bbu-card {
+    background: #10101E;
+    border: 1px solid #2D2D5E;
+    border-radius: 16px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .bbu-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, #6C63FF, #A855F7);
+  }
+  .bbu-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .bbu-sub {
+    color: #5A5A80;
+    font-size: 12px;
+    margin: -8px 0 14px;
+    line-height: 1.5;
+  }
+  .bbu-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .bbu-btn {
+    background: #1A1A2E;
+    color: #A855F7;
+    border: 1px solid #2D2D5E;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .2s, border-color .2s;
+  }
+  .bbu-btn:hover { border-color: #6C63FF; opacity: .9; }
+  .bbu-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .bbu-btn-primary {
+    background: linear-gradient(135deg, #6C63FF, #A855F7);
+    color: #fff;
+    border: none;
+  }
+  .bbu-btn-green { background: #00D4AA; color: #05130F; border: none; }
+  .bbu-select, .bbu-input {
+    background: #1A1A2E;
+    border: 1px solid #2D2D5E;
+    color: #FFFFFF;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    flex: 1;
+    min-width: 160px;
+  }
+  .bbu-select:focus, .bbu-input:focus { outline: none; border-color: #6C63FF; }
+  .bbu-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #5A5A80; }
+  .bbu-dot.ok { background: #00D4AA; }
+  .bbu-dot.err { background: #FF4D6D; }
+  .bbu-dot.warn { background: #FFD166; }
+  .bbu-status-text { font-size: 12px; color: #B0B0CC; }
+
+  .bbu-drop {
+    border: 2px dashed #2D2D5E;
+    border-radius: 12px;
+    padding: 28px;
+    text-align: center;
+    color: #5A5A80;
+    font-size: 13px;
+    cursor: pointer;
+    margin: 14px 0;
+    transition: border-color .2s, color .2s;
+  }
+  .bbu-drop:hover, .bbu-drop.drag { border-color: #6C63FF; color: #B0B0CC; }
+
+  .bbu-queue { margin-top: 14px; }
+  .bbu-queue-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-bottom: 1px solid #1A1A2E; font-size: 13px;
+  }
+  .bbu-queue-row .fn { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bbu-queue-row .sz { color: #5A5A80; width: 70px; }
+  .bbu-queue-row .st { width: 110px; text-align: right; }
+
+  .bbu-progress-wrap { margin-top: 10px; }
+  .bbu-progress-label { font-size: 12px; color: #B0B0CC; margin-bottom: 4px; }
+  .bbu-progress-bar { height: 6px; background: #2D2D5E; border-radius: 3px; overflow: hidden; }
+  .bbu-progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #6C63FF, #A855F7); transition: width .3s; }
+
+  .bbu-table-wrap { overflow-x: auto; }
+  table.bbu-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.bbu-table th {
+    text-align: left; color: #5A5A80; font-weight: 700; font-size: 11px;
+    text-transform: uppercase; letter-spacing: .5px; padding: 8px 10px; border-bottom: 1px solid #2D2D5E;
+    white-space: nowrap;
+  }
+  table.bbu-table td { padding: 8px 10px; border-bottom: 1px solid #1A1A2E; vertical-align: middle; }
+  table.bbu-table tr:last-child td { border-bottom: none; }
+  .bbu-thumb {
+    width: 40px; height: 40px; border-radius: 6px; object-fit: cover;
+    background: #1A1A2E; border: 1px solid #2D2D5E; display: block;
+  }
+  .bbu-thumb-placeholder {
+    width: 40px; height: 40px; border-radius: 6px; background: #1A1A2E;
+    border: 1px solid #2D2D5E; display: flex; align-items: center; justify-content: center;
+    font-size: 16px; color: #5A5A80;
+  }
+  .bbu-hash { font-family: 'Courier New', monospace; font-size: 11px; color: #B0B0CC; cursor: pointer; }
+  .bbu-hash:hover { color: #A855F7; }
+  .bbu-link { color: #6C63FF; text-decoration: none; font-weight: 600; }
+  .bbu-link:hover { text-decoration: underline; }
+  .bbu-pill {
+    display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 8px;
+    border-radius: 20px; text-transform: uppercase;
+  }
+  .bbu-pill.up   { background: rgba(0,212,170,.15); color: #00D4AA; }
+  .bbu-pill.down { background: rgba(108,99,255,.15); color: #6C63FF; }
+  .bbu-pill.sync { background: rgba(168,85,247,.15); color: #A855F7; }
+  .bbu-empty { color: #5A5A80; font-size: 13px; padding: 20px; text-align: center; }
+  .bbu-log { max-height: 140px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 11.5px; margin-top: 10px; }
+  .bbu-log div { padding: 2px 0; color: #B0B0CC; }
+  .bbu-log .ok   { color: #00D4AA; }
+  .bbu-log .bad  { color: #FF4D6D; }
+  .bbu-log .warn { color: #FFD166; }
+</style>
+
+<div class="bbu-widget" id="bbuWidget">
+
+  <!-- Wallet -->
+  <div class="bbu-card">
+    <div class="bbu-title">🔌 Wallet</div>
+    <div class="bbu-row">
+      <span class="bbu-dot" id="bbuWalletDot"></span>
+      <span class="bbu-status-text" id="bbuWalletText">Not checked</span>
+      <button class="bbu-btn" id="bbuCheckWalletBtn">Check Wallet</button>
+    </div>
+    <div class="bbu-sub">Uploads pay a real BSV storage fee through your local BRC-100 wallet (e.g. Metanet Client). Downloads and browsing don't need one.</div>
+  </div>
+
+  <!-- Upload -->
+  <div class="bbu-card">
+    <div class="bbu-title">⬆ Upload to UHRP</div>
+    <div class="bbu-drop" id="bbuDrop">Drop files here, or click to choose</div>
+    <input type="file" id="bbuFileInput" multiple style="display:none">
+    <div class="bbu-row">
+      <select class="bbu-select" id="bbuRetention" style="flex:0 0 160px">
+        <option value="1440">1 Day</option>
+        <option value="10080">7 Days</option>
+        <option value="43200" selected>30 Days</option>
+        <option value="129600">90 Days</option>
+        <option value="525600">1 Year</option>
+        <option value="5256000">10 Years</option>
+        <option value="52560000">100 Years</option>
+      </select>
+      <button class="bbu-btn bbu-btn-primary" id="bbuUploadAllBtn">Upload All</button>
+      <button class="bbu-btn" id="bbuClearQueueBtn">Clear Queue</button>
+    </div>
+    <div class="bbu-queue" id="bbuQueue"></div>
+    <div class="bbu-progress-wrap">
+      <div class="bbu-progress-label" id="bbuProgressLabel">Upload Progress — 0%</div>
+      <div class="bbu-progress-bar"><div class="bbu-progress-fill" id="bbuProgressFill"></div></div>
+    </div>
+  </div>
+
+  <!-- Download -->
+  <div class="bbu-card">
+    <div class="bbu-title">⬇ Download from UHRP</div>
+    <div class="bbu-row">
+      <input class="bbu-input" id="bbuDownloadUrl" placeholder="uhrp://…">
+      <button class="bbu-btn bbu-btn-primary" id="bbuDownloadBtn">Download</button>
+    </div>
+  </div>
+
+  <!-- Manage -->
+  <div class="bbu-card">
+    <div class="bbu-title">🗂 Manage Hosted Files</div>
+    <div class="bbu-row">
+      <button class="bbu-btn" id="bbuSyncBtn">🔄 Sync from Host</button>
+      <input class="bbu-input" id="bbuRenewUrl" placeholder="uhrp:// to renew" style="min-width:220px">
+      <input class="bbu-input" id="bbuRenewMinutes" placeholder="Additional minutes" style="min-width:140px;flex:0 0 140px">
+      <button class="bbu-btn" id="bbuRenewBtn">⏳ Renew</button>
+    </div>
+  </div>
+
+  <!-- Ledger -->
+  <div class="bbu-card">
+    <div class="bbu-title">📒 Ledger <span class="bbu-status-text" id="bbuLedgerCount"></span></div>
+    <div class="bbu-row" style="margin-bottom:12px">
+      <button class="bbu-btn bbu-btn-green" id="bbuExportCsvBtn">⬇ Export CSV</button>
+      <button class="bbu-btn" id="bbuClearLedgerBtn">🗑 Clear Ledger</button>
+    </div>
+    <div class="bbu-table-wrap">
+      <table class="bbu-table">
+        <thead>
+          <tr>
+            <th></th><th>Filename</th><th>Type</th><th>Size</th>
+            <th>UHRP URL</th><th>Direct Link</th><th>Expiry</th><th>Status</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="bbuLedgerBody"></tbody>
+      </table>
+      <div class="bbu-empty" id="bbuLedgerEmpty">No files yet. Upload or download something, or Sync from Host.</div>
+    </div>
+  </div>
+
+  <!-- Activity -->
+  <div class="bbu-card">
+    <div class="bbu-title">📋 Activity</div>
+    <div class="bbu-log" id="bbuLog"></div>
+  </div>
+
+</div>
+
+<script type="module">
+import { WalletClient, StorageUploader, StorageDownloader } from "https://cdn.jsdelivr.net/npm/@bsv/sdk@2.1.6/+esm";
+
+const STORAGE_URL = "https://nanostore.babbage.systems";
+const NETWORK_PRESET = "mainnet";
+const LEDGER_KEY = "bbuUhrpLedger";
+const THUMB_SIZE = 64;
+
+const $ = (id) => document.getElementById(id);
+
+// ── Ledger (localStorage) ────────────────────────────────────────────────
+function loadLedger() {
+  try { return JSON.parse(localStorage.getItem(LEDGER_KEY) || "[]"); }
+  catch { return []; }
+}
+function saveLedger(rows) {
+  localStorage.setItem(LEDGER_KEY, JSON.stringify(rows));
+}
+let ledger = loadLedger();
+
+function addEntry(entry) {
+  ledger.push({ date: new Date().toISOString(), status: "", expiryTime: null, ...entry });
+  saveLedger(ledger);
+  renderLedger();
+}
+function updateEntry(uhrpUrl, patch) {
+  let touched = 0;
+  ledger = ledger.map((e) => {
+    if (e.uhrpUrl === uhrpUrl) { touched++; return { ...e, ...patch }; }
+    return e;
+  });
+  if (touched) saveLedger(ledger);
+  renderLedger();
+  return touched;
+}
+function knownUrls() { return new Set(ledger.map((e) => e.uhrpUrl)); }
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function fmtSize(n) {
+  if (n == null) return "";
+  const u = ["B", "KB", "MB", "GB"];
+  let v = n, i = 0;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
+}
+function fmtDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleString();
+}
+function statusFor(expiryUnix) {
+  if (!expiryUnix) return "";
+  return expiryUnix * 1000 > Date.now() ? "Active" : "Expired";
+}
+async function sha256Hex(bytes) {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function log(msg, level = "") {
+  const el = document.createElement("div");
+  if (level) el.className = level;
+  el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  $("bbuLog").prepend(el);
+}
+function thumbFromFile(file) {
+  if (!file.type.startsWith("image/")) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = THUMB_SIZE; c.height = THUMB_SIZE;
+        const ctx = c.getContext("2d");
+        const scale = Math.max(THUMB_SIZE / img.width, THUMB_SIZE / img.height);
+        const w = img.width * scale, h = img.height * scale;
+        ctx.drawImage(img, (THUMB_SIZE - w) / 2, (THUMB_SIZE - h) / 2, w, h);
+        resolve(c.toDataURL("image/jpeg", 0.82));
+      };
+      img.onerror = () => resolve(null);
+      img.src = reader.result;
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+function thumbFromBlob(blob, mimeType) {
+  if (!mimeType || !mimeType.startsWith("image/")) return Promise.resolve(null);
+  return thumbFromFile(new File([blob], "x", { type: mimeType }));
+}
+
+// ── Wallet ───────────────────────────────────────────────────────────────
+let walletInstance = null;
+function getWallet() {
+  if (!walletInstance) walletInstance = new WalletClient(); // browser: origin set automatically, no originator needed
+  return walletInstance;
+}
+
+$("bbuCheckWalletBtn").addEventListener("click", async () => {
+  $("bbuWalletDot").className = "bbu-dot warn";
+  $("bbuWalletText").textContent = "Checking…";
+  try {
+    const wallet = getWallet();
+    await wallet.connectToSubstrate();
+    const { version } = await wallet.getVersion({});
+    $("bbuWalletDot").className = "bbu-dot ok";
+    $("bbuWalletText").textContent = `Connected — v${version}`;
+  } catch (err) {
+    $("bbuWalletDot").className = "bbu-dot err";
+    $("bbuWalletText").textContent = "No wallet reachable";
+    log(`Wallet check failed: ${err.message || err}`, "bad");
+  }
+});
+
+// ── Upload queue ─────────────────────────────────────────────────────────
+let queue = []; // { file, rowEl }
+
+function renderQueueEmpty() {
+  if (!queue.length) $("bbuQueue").innerHTML = "";
+}
+function addToQueue(file) {
+  const row = document.createElement("div");
+  row.className = "bbu-queue-row";
+  row.innerHTML = `<span class="fn">${file.name}</span><span class="sz">${fmtSize(file.size)}</span><span class="st">Queued</span>`;
+  $("bbuQueue").appendChild(row);
+  queue.push({ file, statusEl: row.querySelector(".st") });
+}
+function setupDropzone() {
+  const drop = $("bbuDrop");
+  const input = $("bbuFileInput");
+  drop.addEventListener("click", () => input.click());
+  input.addEventListener("change", () => { [...input.files].forEach(addToQueue); input.value = ""; });
+  ["dragenter", "dragover"].forEach((ev) =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("drag"); }));
+  ["dragleave", "drop"].forEach((ev) =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("drag"); }));
+  drop.addEventListener("drop", (e) => { [...e.dataTransfer.files].forEach(addToQueue); });
+}
+$("bbuClearQueueBtn").addEventListener("click", () => {
+  queue = [];
+  $("bbuQueue").innerHTML = "";
+  setProgress(0, "Upload Progress — 0%");
+});
+function setProgress(frac, text) {
+  $("bbuProgressFill").style.width = `${Math.round(frac * 100)}%`;
+  $("bbuProgressLabel").textContent = text;
+}
+
+$("bbuUploadAllBtn").addEventListener("click", async () => {
+  if (!queue.length) { log("No queued files to upload.", "warn"); return; }
+  const retentionMinutes = parseInt($("bbuRetention").value, 10);
+  const total = queue.length;
+  $("bbuUploadAllBtn").disabled = true;
+
+  for (let i = 0; i < total; i++) {
+    const { file, statusEl } = queue[i];
+    statusEl.textContent = "Uploading…";
+    setProgress(i / total, `Uploading ${file.name} (${i + 1}/${total})`);
+
+    try {
+      const buf = new Uint8Array(await file.arrayBuffer());
+      const sha256 = await sha256Hex(buf);
+      const uploader = new StorageUploader({ storageURL: STORAGE_URL, wallet: getWallet() });
+      const result = await uploader.publishFile({
+        file: { data: buf, type: file.type || "application/octet-stream" },
+        retentionPeriod: retentionMinutes,
+      });
+
+      let directLink = null;
+      try {
+        const downloader = new StorageDownloader({ networkPreset: NETWORK_PRESET });
+        const urls = await downloader.resolve(result.uhrpURL);
+        directLink = urls[0] || null;
+      } catch { /* propagation delay — resolve later via Sync */ }
+
+      const thumb = await thumbFromFile(file);
+
+      addEntry({
+        direction: "UPLOAD",
+        filename: file.name,
+        contentType: file.type || "application/octet-stream",
+        size: buf.length,
+        sha256,
+        uhrpUrl: result.uhrpURL,
+        directLink,
+        hostedBy: result.hostedBy || [],
+        thumb,
+      });
+
+      statusEl.textContent = "✅ Uploaded";
+      log(`✅ ${file.name} → ${result.uhrpURL}`, "ok");
+      if (!directLink) log(`   Direct link pending — use Sync from Host once it propagates.`, "warn");
+    } catch (err) {
+      statusEl.textContent = "❌ Failed";
+      log(`❌ ${file.name} failed: ${err.message || err}`, "bad");
+    }
+  }
+
+  setProgress(1, "Upload Progress — 100%");
+  $("bbuUploadAllBtn").disabled = false;
+});
+
+// ── Download ─────────────────────────────────────────────────────────────
+$("bbuDownloadBtn").addEventListener("click", async () => {
+  const uhrpUrl = $("bbuDownloadUrl").value.trim();
+  if (!uhrpUrl) { log("Enter a UHRP URL to download.", "warn"); return; }
+  log(`Downloading ${uhrpUrl}…`);
+  try {
+    const downloader = new StorageDownloader({ networkPreset: NETWORK_PRESET });
+    const result = await downloader.download(uhrpUrl); // {data, mimeType}, hash-verified
+    const blob = new Blob([result.data], { type: result.mimeType || "application/octet-stream" });
+    const thumb = await thumbFromBlob(blob, result.mimeType);
+
+    const shortHash = uhrpUrl.replace(/^uhrp:\/\//, "").replace(/^uhrp:/, "").slice(0, 16) || "uhrp_file";
+    const filename = shortHash;
+
+    addEntry({
+      direction: "DOWNLOAD",
+      filename,
+      contentType: result.mimeType || "application/octet-stream",
+      size: result.data.length,
+      sha256: await sha256Hex(result.data),
+      uhrpUrl,
+      directLink: null,
+      hostedBy: [],
+      thumb,
+    });
+
+    // Offer the file to save — normal browser download, works everywhere.
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+
+    try {
+      const urls = await downloader.resolve(uhrpUrl);
+      if (urls[0]) updateEntry(uhrpUrl, { directLink: urls[0] });
+    } catch { /* not fatal */ }
+
+    log(`✅ Downloaded and verified ${uhrpUrl}`, "ok");
+  } catch (err) {
+    log(`❌ Download failed: ${err.message || err}`, "bad");
+  }
+});
+
+// ── Sync + Renew ─────────────────────────────────────────────────────────
+$("bbuSyncBtn").addEventListener("click", async () => {
+  log("Syncing ledger with UHRP host…");
+  try {
+    const uploader = new StorageUploader({ storageURL: STORAGE_URL, wallet: getWallet() });
+    const uploads = await uploader.listUploads();
+    const known = knownUrls();
+    let updated = 0, added = 0;
+
+    for (const entry of uploads) {
+      const uhrpUrl = entry.uhrpUrl;
+      if (!uhrpUrl) continue;
+      if (known.has(uhrpUrl)) {
+        if (entry.expiryTime) {
+          updateEntry(uhrpUrl, { expiryTime: entry.expiryTime, status: statusFor(entry.expiryTime) });
+          updated++;
+        }
+        continue;
+      }
+      let details = {};
+      try { details = await uploader.findFile(uhrpUrl); } catch { /* leave blank */ }
+      addEntry({
+        direction: "SYNCED",
+        filename: details.name || uhrpUrl,
+        contentType: details.mimeType || "",
+        size: Number(details.size) || 0,
+        sha256: "",
+        uhrpUrl,
+        directLink: null,
+        hostedBy: [],
+        thumb: null,
+        expiryTime: details.expiryTime || entry.expiryTime || null,
+        status: statusFor(details.expiryTime || entry.expiryTime),
+      });
+      added++;
+    }
+    log(`✅ Sync complete — ${updated} updated, ${added} added.`, "ok");
+  } catch (err) {
+    log(`❌ Sync failed: ${err.message || err}`, "bad");
+  }
+});
+
+$("bbuRenewBtn").addEventListener("click", async () => {
+  const uhrpUrl = $("bbuRenewUrl").value.trim();
+  const minutes = parseInt($("bbuRenewMinutes").value, 10);
+  if (!uhrpUrl || !Number.isInteger(minutes) || minutes < 1) {
+    log("Enter a UHRP URL and additional minutes to renew.", "warn");
+    return;
+  }
+  log(`Renewing ${uhrpUrl}…`);
+  try {
+    const uploader = new StorageUploader({ storageURL: STORAGE_URL, wallet: getWallet() });
+    const result = await uploader.renewFile(uhrpUrl, minutes);
+    if (result.newExpiryTime) {
+      updateEntry(uhrpUrl, { expiryTime: result.newExpiryTime, status: statusFor(result.newExpiryTime) });
+    }
+    log(`✅ Renewed — paid ${result.amount ?? "?"} sats, new expiry ${result.newExpiryTime || "unknown"}`, "ok");
+  } catch (err) {
+    log(`❌ Renew failed: ${err.message || err}`, "bad");
+  }
+});
+
+// ── Ledger rendering ─────────────────────────────────────────────────────
+function renderLedger() {
+  const body = $("bbuLedgerBody");
+  const empty = $("bbuLedgerEmpty");
+  $("bbuLedgerCount").textContent = ledger.length ? `(${ledger.length})` : "";
+  body.innerHTML = "";
+
+  if (!ledger.length) { empty.style.display = "block"; return; }
+  empty.style.display = "none";
+
+  [...ledger].reverse().forEach((e) => {
+    const tr = document.createElement("tr");
+    const pillClass = e.direction === "UPLOAD" ? "up" : e.direction === "DOWNLOAD" ? "down" : "sync";
+    const shortUrl = e.uhrpUrl ? `${e.uhrpUrl.slice(0, 18)}…` : "";
+    tr.innerHTML = `
+      <td>${e.thumb ? `<img class="bbu-thumb" src="${e.thumb}">` : `<div class="bbu-thumb-placeholder">📄</div>`}</td>
+      <td>${escapeHtml(e.filename || "")}<br><span class="bbu-pill ${pillClass}">${e.direction}</span></td>
+      <td>${escapeHtml(e.contentType || "")}</td>
+      <td>${fmtSize(e.size)}</td>
+      <td><span class="bbu-hash" title="Click to copy" data-copy="${e.uhrpUrl}">${shortUrl}</span></td>
+      <td>${e.directLink ? `<a class="bbu-link" href="${e.directLink}" target="_blank" rel="noopener">Open ↗</a>` : "—"}</td>
+      <td>${e.expiryTime ? new Date(e.expiryTime * 1000).toLocaleDateString() : ""}</td>
+      <td>${escapeHtml(e.status || "")}</td>
+      <td><button class="bbu-btn" data-resolve="${e.uhrpUrl}" style="padding:4px 8px;font-size:11px">Resolve</button></td>
+    `;
+    body.appendChild(tr);
+  });
+
+  body.querySelectorAll("[data-copy]").forEach((el) => {
+    el.addEventListener("click", () => {
+      navigator.clipboard?.writeText(el.dataset.copy);
+      log(`Copied UHRP URL to clipboard.`);
+    });
+  });
+  body.querySelectorAll("[data-resolve]").forEach((el) => {
+    el.addEventListener("click", async () => {
+      const uhrpUrl = el.dataset.resolve;
+      try {
+        const downloader = new StorageDownloader({ networkPreset: NETWORK_PRESET });
+        const urls = await downloader.resolve(uhrpUrl);
+        if (urls[0]) { updateEntry(uhrpUrl, { directLink: urls[0] }); log(`🔗 Resolved ${uhrpUrl}`, "ok"); }
+        else log(`No hosts currently serving ${uhrpUrl}`, "warn");
+      } catch (err) {
+        log(`❌ Resolve failed: ${err.message || err}`, "bad");
+      }
+    });
+  });
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ── Export / Clear ──────────────────────────────────────────────────────
+$("bbuExportCsvBtn").addEventListener("click", () => {
+  const cols = ["date", "direction", "filename", "contentType", "size", "sha256", "uhrpUrl", "directLink", "expiryTime", "status", "hostedBy"];
+  const rows = [cols.join(",")];
+  for (const e of ledger) {
+    rows.push(cols.map((c) => {
+      let v = e[c];
+      if (c === "hostedBy") v = (v || []).join(" | ");
+      if (v == null) v = "";
+      return `"${String(v).replace(/"/g, '""')}"`;
+    }).join(","));
+  }
+  const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "uhrp_ledger.csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+});
+
+$("bbuClearLedgerBtn").addEventListener("click", () => {
+  if (!confirm("Clear the local UHRP ledger? This only affects this browser — files already uploaded stay on the host.")) return;
+  ledger = [];
+  saveLedger(ledger);
+  renderLedger();
+  log("Ledger cleared.", "warn");
+});
+
+// ── Init ─────────────────────────────────────────────────────────────────
+setupDropzone();
+renderLedger();
+</script>
+<!--
+  ============================================================
+  END OF WIDGET
+  ============================================================
+-->

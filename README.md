@@ -138,6 +138,12 @@ Upload and download documents/images to [UHRP](https://hub.bsvblockchain.org/brc
 
 Note on scale: UHRP prices per file — one paid invoice and one URL per upload, no batching in the protocol itself. The desktop app's file queue (Add Files/Add Folder → Upload All) and the ledger's auto-logging remove the manual copy-paste work around that; `/uhrpsync` (or the "Sync from Host" button) reconciles the ledger against your wallet's actual hosted file list in one call, so you never have to cross-check against the storage host's website by hand.
 
+### Browser widget (`uhrp_widget.html`)
+
+A self-contained drop-in block for your website's backoffice — same pattern as `bestbrand_website_widget.html` and `download.html`: paste the whole file's contents into any admin page. Unlike the Telegram/desktop paths, it runs **entirely client-side** (loads `@bsv/sdk` from jsDelivr, no Node.js/Python backend needed) and talks straight to your local BRC-100 wallet and `nanostore.babbage.systems` from the browser — the same mechanism the `uhrp-ui.bapp.dev` reference site uses.
+
+Ledger data lives in that browser's `localStorage`, scoped to the page's origin — it won't sync across devices/browsers by itself. Use the "Export CSV" button to back it up or move entries elsewhere. Every upload/download shows an inline thumbnail directly in the page table (no separate spreadsheet to open).
+
 **Why there's a `uhrp_node/` folder:** publishing a file to UHRP pays the storage host's invoice, which requires signing a BSV transaction through a BRC-100 wallet. That payment/signing logic is only implemented in Babbage's `@bsv/sdk` (JS/TS) — there's no Python equivalent — so the bot shells out to a small Node.js helper for the actual upload/resolve/download calls. Everything else (Telegram commands, the ledger, file handling) is Python.
 
 ### Setup
