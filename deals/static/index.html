@@ -51,16 +51,18 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
         </svg>
-        Scan for Deals
+        <span id="scanBtnText">Scan for Deals</span>
       </button>
       <span id="selCount" class="sel-count">0 categories selected</span>
     </div>
   </section>
 
   <!-- BOT STATUS STRIP -->
-  <div id="statusStrip" class="status-strip hidden">
-    <div class="bots-row" id="botRow"></div>
-    <div class="status-msg" id="statusMsg">Bots are scanning the web…</div>
+  <div class="status-outer">
+    <div id="statusStrip" class="status-strip hidden">
+      <div class="bots-row" id="botRow"></div>
+      <div class="status-msg" id="statusMsg">Bots are scanning the web…</div>
+    </div>
   </div>
 
   <!-- RESULTS -->

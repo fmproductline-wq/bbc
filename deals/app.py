@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from bots import scan_categories, CATEGORY_QUERIES
+from bots import scan_categories, KNOWN_CATEGORIES
 
 app = FastAPI(title="Deal Scanner Bot")
 
@@ -26,17 +26,29 @@ async def index():
 
 @app.get("/api/categories")
 async def get_categories():
-    return {"categories": list(CATEGORY_QUERIES.keys())}
+    return {"categories": sorted(KNOWN_CATEGORIES)}
 
 
 @app.post("/api/scan")
 async def scan(req: ScanRequest):
     if not req.categories:
-        raise HTTPException(400, "Select at least one category")
+        raise HTTPException(status_code=400, detail="Select at least one category")
     if len(req.categories) > 12:
-        raise HTTPException(400, "Maximum 12 categories per scan")
+        raise HTTPException(status_code=400, detail="Maximum 12 categories per scan")
 
-    results = await scan_categories(req.categories, req.query.strip())
+    # Reject any category name not in our known set
+    unknown = [c for c in req.categories if c not in KNOWN_CATEGORIES]
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown categories: {', '.join(unknown)}",
+        )
+
+    try:
+        results = await scan_categories(req.categories, req.query.strip())
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Scan error: {exc}") from exc
+
     flat: list[dict] = []
     for deals in results.values():
         flat.extend(deals)
@@ -44,7 +56,7 @@ async def scan(req: ScanRequest):
     return JSONResponse({"deals": flat, "total": len(flat)})
 
 
-# Mount static files AFTER route definitions to avoid shadowing /
+# Mount static files AFTER route definitions so routes are never shadowed
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 

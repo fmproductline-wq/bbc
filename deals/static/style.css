@@ -12,7 +12,6 @@
   --red: #ef4444;
   --text: #e8eaf0;
   --muted: #8892a4;
-  --card-h: 480px;
   --radius: 12px;
 }
 
@@ -214,15 +213,17 @@ header {
 .sel-count { color: var(--muted); font-size: 13px; }
 
 /* ===================== STATUS STRIP ===================== */
-.status-strip {
+/* Outer wrapper matches the horizontal rhythm of .panel and .results */
+.status-outer {
   max-width: 1100px;
   margin: 0 auto 24px;
+  padding: 0 24px;
+}
+.status-strip {
   padding: 16px 24px;
   background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  margin-left: 24px;
-  margin-right: 24px;
 }
 .bots-row {
   display: flex;
