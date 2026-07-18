@@ -65,9 +65,89 @@ async def handle_signal(signal: TVSignal) -> str:
         return f"❌ Error: {e}"
 
 
+# ── Shared close helper (direction-aware — used by both long and short flows) ─
+
+async def _close_positions(coin: str, side: str, exit_price: float,
+                            indicator: str, timeframe: str) -> str | None:
+    """
+    Close every open position on `coin` matching `side` ("long"/"short").
+    Returns the joined approval-result string, or None if there was nothing to close.
+    """
+    matching = [p for p in state.open_positions() if p.token_out == coin and p.side == side]
+    if not matching:
+        return None
+
+    results = []
+    for pos in matching:
+        direction = 1 if pos.side == "long" else -1
+        pnl_est   = ((exit_price - pos.entry_price) / pos.entry_price) * 100 * direction
+        notional  = pos.amount_out * exit_price
+        fee_est   = notional * FEE_RATE
+        summary   = f"CLOSE {pos.side.upper()} {pos.amount_out} {coin} @ ${exit_price:,.4f}"
+        detail    = (
+            f"🔴 *CLOSE {pos.side.upper()} — {coin}*\n"
+            f"Signal: `{indicator}` ({timeframe})\n"
+            f"Size:     `{pos.amount_out} {coin}`\n"
+            f"Exit:     `${exit_price:,.4f}`\n"
+            f"Entry:    `${pos.entry_price:,.4f}`\n"
+            f"Est PnL:  `{pnl_est:+.2f}%`\n"
+            f"Notional: `${notional:,.2f}`\n"
+            f"Fee:      `${fee_est:.4f}` (0.05%)\n"
+            f"Exchange: Hyperliquid Perps"
+        )
+
+        _pos = pos   # capture for closure
+
+        async def execute_close(_p=_pos) -> str:
+            hl.market_close(coin)
+            direction = 1 if _p.side == "long" else -1
+            actual_pnl_pct = ((exit_price - _p.entry_price) / _p.entry_price) * 100 * direction
+            actual_pnl_usd = _p.amount_in * (actual_pnl_pct / 100)
+            _p.closed = True
+            _p.pnl = actual_pnl_pct
+            guard.record_trade_pnl(
+                actual_pnl_usd,
+                f"{coin} close @ ${exit_price:,.4f}"
+            )
+            if getattr(_p, "trade_history_id", None):
+                try:
+                    from trading.trade_history import record_close
+                    record_close(_p.trade_history_id, exit_price, actual_pnl_usd)
+                except Exception:
+                    pass
+            try:
+                from trading.trailing_stop import trailing_stop_monitor
+                trailing_stop_monitor.reset_ticker(coin)
+            except Exception:
+                pass
+            try:
+                fee = collect_fee(coin, _p.amount_out, exit_price, "close")
+                fee_str = f"\nPlatform fee: ${fee['fee_usd']:.4f}"
+            except Exception:
+                fee_str = ""
+            profit_avail = guard.ledger.available_profit()
+            return (
+                f"✅ *CLOSED {_p.side.upper()}*\n"
+                f"{coin} @ ${exit_price:,.4f}\n"
+                f"PnL: {actual_pnl_pct:+.2f}% (${actual_pnl_usd:+.2f}){fee_str}\n"
+                f"Available profit: ${profit_avail:.2f}"
+            )
+
+        results.append(
+            await approval_queue.request("trade", summary, detail, execute_close)
+        )
+    return "\n".join(results)
+
+
 # ── Long ──────────────────────────────────────────────────────────────────────
 
 async def _request_long(signal: TVSignal, coin: str) -> str:
+    # A buy signal must first close any open SHORT on this coin — otherwise the
+    # short would sit open forever since nothing else ever reverses it.
+    close_result = await _close_positions(coin, "short", signal.price, signal.indicator, signal.timeframe)
+    if close_result is not None:
+        return close_result
+
     size = _position_size(coin)
     if size <= 0:
         return f"❌ Cannot size position for {coin} — check account balance"
@@ -100,6 +180,7 @@ async def _request_long(signal: TVSignal, coin: str) -> str:
             token_in="USD", token_out=coin,
             amount_in=notional, amount_out=size,
             entry_price=signal.price, stop_loss=stop,
+            side="long",
             chain="hyperliquid", tx_hash=str(result),
             opened_at=time.time(),
         ))
@@ -120,58 +201,10 @@ async def _request_long(signal: TVSignal, coin: str) -> str:
 # ── Close / Short ─────────────────────────────────────────────────────────────
 
 async def _request_close_or_short(signal: TVSignal, coin: str) -> str:
-    open_pos = [p for p in state.open_positions() if p.token_out == coin]
-
-    if open_pos:
-        # Close existing long(s)
-        results = []
-        for pos in open_pos:
-            pnl_est = ((signal.price - pos.entry_price) / pos.entry_price) * 100
-            notional  = pos.amount_out * signal.price
-            fee_est   = notional * FEE_RATE
-            summary   = f"CLOSE {pos.amount_out} {coin} @ ${signal.price:,.4f}"
-            detail    = (
-                f"🔴 *CLOSE — {coin}*\n"
-                f"Signal: `{signal.indicator}` ({signal.timeframe})\n"
-                f"Size:     `{pos.amount_out} {coin}`\n"
-                f"Exit:     `${signal.price:,.4f}`\n"
-                f"Entry:    `${pos.entry_price:,.4f}`\n"
-                f"Est PnL:  `{pnl_est:+.2f}%`\n"
-                f"Notional: `${notional:,.2f}`\n"
-                f"Fee:      `${fee_est:.4f}` (0.05%)\n"
-                f"Exchange: Hyperliquid Perps"
-            )
-
-            _pos = pos   # capture for closure
-
-            async def execute_close(_p=_pos) -> str:
-                hl.market_close(coin)
-                actual_pnl_pct = ((signal.price - _p.entry_price) / _p.entry_price) * 100
-                actual_pnl_usd = _p.amount_in * (actual_pnl_pct / 100)
-                _p.closed = True
-                _p.pnl = actual_pnl_pct
-                # Record realised PnL in the Trade-Only guard
-                guard.record_trade_pnl(
-                    actual_pnl_usd,
-                    f"{coin} close @ ${signal.price:,.4f}"
-                )
-                try:
-                    fee = collect_fee(coin, _p.amount_out, signal.price, "close")
-                    fee_str = f"\nPlatform fee: ${fee['fee_usd']:.4f}"
-                except Exception:
-                    fee_str = ""
-                profit_avail = guard.ledger.available_profit()
-                return (
-                    f"✅ *CLOSED*\n"
-                    f"{coin} @ ${signal.price:,.4f}\n"
-                    f"PnL: {actual_pnl_pct:+.2f}% (${actual_pnl_usd:+.2f}){fee_str}\n"
-                    f"Available profit: ${profit_avail:.2f}"
-                )
-
-            results.append(
-                await approval_queue.request("trade", summary, detail, execute_close)
-            )
-        return "\n".join(results)
+    # A sell signal must first close any open LONG on this coin.
+    close_result = await _close_positions(coin, "long", signal.price, signal.indicator, signal.timeframe)
+    if close_result is not None:
+        return close_result
 
     # No open long — request a short
     size = _position_size(coin)
@@ -205,6 +238,7 @@ async def _request_close_or_short(signal: TVSignal, coin: str) -> str:
             token_in="USD", token_out=coin,
             amount_in=notional, amount_out=size,
             entry_price=signal.price, stop_loss=stop,
+            side="short",
             chain="hyperliquid", tx_hash=str(result),
             opened_at=time.time(),
         ))
@@ -258,8 +292,17 @@ async def manual_long(coin: str, size: float, leverage: int | None = None) -> st
                 hl.set_stop_loss(coin, stop_est, size)
             except Exception:
                 pass
+        entry_price = price or 0.0
+        state.positions.append(Position(
+            token_in="USD", token_out=coin,
+            amount_in=notional, amount_out=size,
+            entry_price=entry_price, stop_loss=stop_est,
+            side="long",
+            chain="hyperliquid", tx_hash=str(result),
+            opened_at=time.time(),
+        ))
         try:
-            fee = collect_fee(coin, size, price if price else 0.0, "long")
+            fee = collect_fee(coin, size, entry_price, "long")
             fee_str = f"\nFee: ${fee['fee_usd']:.4f}"
         except Exception:
             fee_str = ""
@@ -301,8 +344,17 @@ async def manual_short(coin: str, size: float, leverage: int | None = None) -> s
                 hl.set_stop_loss(coin, stop_est, size)
             except Exception:
                 pass
+        entry_price = price or 0.0
+        state.positions.append(Position(
+            token_in="USD", token_out=coin,
+            amount_in=notional, amount_out=size,
+            entry_price=entry_price, stop_loss=stop_est,
+            side="short",
+            chain="hyperliquid", tx_hash=str(result),
+            opened_at=time.time(),
+        ))
         try:
-            fee = collect_fee(coin, size, price if price else 0.0, "short")
+            fee = collect_fee(coin, size, entry_price, "short")
             fee_str = f"\nFee: ${fee['fee_usd']:.4f}"
         except Exception:
             fee_str = ""
@@ -333,7 +385,7 @@ async def manual_close(coin: str) -> str:
         for p in open_pos:
             if not p.closed:
                 close_price = price or p.entry_price
-                direction = 1 if (p.stop_loss is None or p.stop_loss < p.entry_price) else -1
+                direction = 1 if p.side == "long" else -1
                 pnl_usd = p.amount_in * ((close_price - p.entry_price) / p.entry_price) * direction
                 guard.record_trade_pnl(pnl_usd, f"{coin} manual close @ ~${close_price:,.4f}")
                 p.closed = True

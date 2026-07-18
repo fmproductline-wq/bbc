@@ -14,6 +14,7 @@ class Position:
     stop_loss: float
     chain: str
     tx_hash: str
+    side: str = "long"   # "long" | "short" — explicit, do not infer from stop_loss (it moves on breakeven)
     opened_at: float = field(default_factory=time.time)
     closed: bool = False
     close_tx: Optional[str] = None

@@ -22,7 +22,6 @@ No response within 2 minutes → auto-rejected.
 """
 import asyncio
 import functools
-import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -361,17 +360,11 @@ async def cmd_long(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     leverage = int(ctx.args[2]) if len(ctx.args) > 2 else None
     await update.message.reply_text(f"⏳ Requesting approval for LONG {size} {coin}…")
 
-    def _run():
+    async def _do():
         from trading.executor import manual_long
-        import asyncio
-        loop = asyncio.new_event_loop()
-        result = loop.run_until_complete(manual_long(coin, size, leverage))
-        loop.close()
-        asyncio.run_coroutine_threadsafe(
-            _bot_app.bot.send_message(cfg.TELEGRAM_ALLOWED_USER_ID, result, parse_mode="Markdown"),
-            asyncio.get_event_loop(),
-        )
-    threading.Thread(target=_run, daemon=True).start()
+        result = await manual_long(coin, size, leverage)
+        await _bot_app.bot.send_message(cfg.TELEGRAM_ALLOWED_USER_ID, result, parse_mode="Markdown")
+    asyncio.create_task(_do())
 
 
 # ── /short <coin> <size> [leverage] — approval-gated ─────────────────────────

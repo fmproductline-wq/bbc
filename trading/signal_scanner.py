@@ -251,6 +251,7 @@ class SignalScanner:
                     token_in="USD", token_out=ticker,
                     amount_in=size * price, amount_out=size,
                     entry_price=price, stop_loss=sl,
+                    side="long" if is_buy else "short",
                     chain="hyperliquid", tx_hash=str(result),
                     opened_at=time.time(),
                     take_profit_1=verdict.take_profit_1,

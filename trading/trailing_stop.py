@@ -72,8 +72,7 @@ class TrailingStopMonitor:
             if sl is None:
                 continue
 
-            # Direction: long if stop is below entry, short if above
-            is_long = sl < entry
+            is_long = pos.side == "long"
 
             # Check if TP1 hit and stop still below entry (long) / above entry (short)
             tp1_hit = (price >= tp1) if is_long else (price <= tp1)

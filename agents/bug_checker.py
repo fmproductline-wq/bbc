@@ -139,9 +139,10 @@ def check_stop_loss_breaches(result: BugCheckResult):
         current_price = mids[coin]
         entry = pos.entry_price
         stop = pos.stop_loss
+        if stop is None:
+            continue
 
-        # Detect if it's a long or short based on stop vs entry
-        is_long = stop < entry
+        is_long = pos.side == "long"
         breached = (is_long and current_price < stop) or (not is_long and current_price > stop)
 
         if breached:
@@ -172,7 +173,8 @@ def check_runaway_loss(result: BugCheckResult):
         current_price = mids[coin]
         if pos.entry_price <= 0:
             continue
-        loss_pct = (pos.entry_price - current_price) / pos.entry_price * 100
+        direction = 1 if pos.side == "long" else -1
+        loss_pct = (pos.entry_price - current_price) / pos.entry_price * 100 * direction
         if loss_pct > threshold:
             result.add(
                 "CRITICAL", "Runaway Loss",
