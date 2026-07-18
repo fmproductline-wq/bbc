@@ -22,13 +22,16 @@ No response within 2 minutes → auto-rejected.
 """
 import asyncio
 import functools
+import re
 import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
+    MessageHandler,
     CallbackQueryHandler,
     ContextTypes,
+    filters,
 )
 from loguru import logger
 from config import cfg
@@ -1107,8 +1110,15 @@ async def cmd_uhrpupload(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uhrp_ledger.ensure_dirs()
 
     tg_file = await (photo or document).get_file()
-    filename = getattr(document, "file_name", None) or f"photo_{tg_file.file_unique_id}.jpg"
-    local_path = uhrp_ledger.FILES_DIR / filename
+    if photo:
+        filename = f"photo_{tg_file.file_unique_id}.jpg"
+    elif document.file_name:
+        filename = document.file_name
+    else:
+        import mimetypes
+        ext = mimetypes.guess_extension(document.mime_type or "") or ""
+        filename = f"document_{tg_file.file_unique_id}{ext}"
+    local_path = uhrp_ledger.unique_local_path(filename)
     await tg_file.download_to_drive(str(local_path))
 
     await msg.reply_text(f"⬆️ Uploading `{filename}` to UHRP…", parse_mode="Markdown")
@@ -1127,18 +1137,33 @@ async def cmd_uhrpupload(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     except uhrp_client.UHRPError:
         pass
 
-    row = uhrp_ledger.add_entry(
-        direction="UPLOAD",
-        filename=filename,
-        content_type=result.get("mimeType", ""),
-        size=result.get("size", 0),
-        sha256=result.get("sha256", ""),
-        uhrp_url=uhrp_url,
-        direct_link=direct_link,
-        hosted_by=result.get("hostedBy", []),
-        local_path=str(local_path),
-        requested_by=update.effective_user.username or str(update.effective_user.id),
-    )
+    # The file is already uploaded and PAID FOR at this point — a ledger write
+    # failure (e.g. uhrp_ledger.xlsx open in Excel) must never look like the
+    # upload itself failed, or a retry would pay for the same file twice.
+    try:
+        row = uhrp_ledger.add_entry(
+            direction="UPLOAD",
+            filename=filename,
+            content_type=result.get("mimeType", ""),
+            size=result.get("size", 0),
+            sha256=result.get("sha256", ""),
+            uhrp_url=uhrp_url,
+            direct_link=direct_link,
+            hosted_by=result.get("hostedBy", []),
+            local_path=str(local_path),
+            requested_by=update.effective_user.username or str(update.effective_user.id),
+        )
+    except Exception as e:
+        logger.error(f"UHRP ledger write failed after successful upload: {e}")
+        lines = [
+            "⚠️ *Uploaded to UHRP, but failed to save to the ledger.*",
+            f"Save this — UHRP URL: `{uhrp_url}`",
+            f"Ledger error: {e}",
+        ]
+        if direct_link:
+            lines.append(f"[Direct link]({direct_link})")
+        await msg.reply_text("\n".join(lines), parse_mode="Markdown", disable_web_page_preview=True)
+        return
 
     lines = [f"✅ *Uploaded to UHRP* (ledger row {row})", f"`{filename}`", f"UHRP URL: `{uhrp_url}`"]
     if direct_link:
@@ -1146,6 +1171,24 @@ async def cmd_uhrpupload(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     else:
         lines.append("Direct link pending — run /uhrpresolve once it propagates.")
     await msg.reply_text("\n".join(lines), parse_mode="Markdown", disable_web_page_preview=True)
+
+
+_UHRPUPLOAD_CAPTION_RE = re.compile(r"^/uhrpupload(?:@\w+)?(?:\s+(\d+))?\s*$", re.IGNORECASE)
+
+
+@auth
+async def cmd_uhrpupload_caption(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """
+    Handles /uhrpupload sent as a caption on a photo/document. Telegram puts
+    caption text in message.caption, not message.text, so PTB's CommandHandler
+    (which only looks at message.text/message.entities) never sees it — this
+    MessageHandler is what actually makes the "send with caption" path work.
+    """
+    match = _UHRPUPLOAD_CAPTION_RE.match((update.message.caption or "").strip())
+    if not match:
+        return
+    ctx.args = [match.group(1)] if match.group(1) else []
+    await cmd_uhrpupload(update, ctx)
 
 
 @auth
@@ -1175,33 +1218,47 @@ async def cmd_uhrpdownload(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ext = mimetypes.guess_extension(mime_type) or ""
     filename = f"{short_hash}{ext}"
     final_path = uhrp_ledger.FILES_DIR / filename
-    tmp_path.rename(final_path)
-
-    row = uhrp_ledger.add_entry(
-        direction="DOWNLOAD",
-        filename=filename,
-        content_type=mime_type,
-        size=result.get("size", 0),
-        sha256=uhrp_client.local_sha256(str(final_path)),
-        uhrp_url=uhrp_url,
-        direct_link=None,
-        hosted_by=[],
-        local_path=str(final_path),
-        requested_by=update.effective_user.username or str(update.effective_user.id),
-    )
+    if tmp_path != final_path:
+        # Path.rename() raises FileExistsError on Windows if final_path already
+        # exists (e.g. this exact file was downloaded before) — .replace() is
+        # the cross-platform atomic-overwrite equivalent.
+        tmp_path.replace(final_path)
 
     try:
         urls = await asyncio.to_thread(uhrp_client.resolve_url, uhrp_url)
-        if urls:
-            uhrp_ledger.update_direct_link(uhrp_url, urls[0])
+        direct_link = urls[0] if urls else None
     except uhrp_client.UHRPError:
-        pass
+        direct_link = None
 
+    # Log to the ledger before sending, but don't let a logging failure stop
+    # the file — the user asked to download it, and it's already sitting
+    # verified on disk; withholding it over a spreadsheet write error would
+    # be worse than just flagging the logging problem in the caption.
+    ledger_note = ""
+    row = None
+    try:
+        row = uhrp_ledger.add_entry(
+            direction="DOWNLOAD",
+            filename=filename,
+            content_type=mime_type,
+            size=result.get("size", 0),
+            sha256=uhrp_client.local_sha256(str(final_path)),
+            uhrp_url=uhrp_url,
+            direct_link=direct_link,
+            hosted_by=[],
+            local_path=str(final_path),
+            requested_by=update.effective_user.username or str(update.effective_user.id),
+        )
+    except Exception as e:
+        logger.error(f"UHRP ledger write failed after successful download: {e}")
+        ledger_note = f" — ⚠️ ledger write failed: {e}"
+
+    caption = f"✅ Downloaded (ledger row {row})" if row else f"✅ Downloaded{ledger_note}"
     with open(final_path, "rb") as f:
         if mime_type.startswith("image/"):
-            await update.message.reply_photo(photo=f, caption=f"✅ Downloaded (ledger row {row})")
+            await update.message.reply_photo(photo=f, caption=caption)
         else:
-            await update.message.reply_document(document=f, filename=filename, caption=f"✅ Downloaded (ledger row {row})")
+            await update.message.reply_document(document=f, filename=filename, caption=caption)
 
 
 @auth
@@ -1223,9 +1280,13 @@ async def cmd_uhrpresolve(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("No hosts currently serving this file.")
         return
 
-    updated = uhrp_ledger.update_direct_link(uhrp_url, urls[0])
+    try:
+        updated = uhrp_ledger.update_direct_link(uhrp_url, urls[0])
+        note = f"\nUpdated {updated} ledger row(s)."
+    except Exception as e:
+        note = f"\n⚠️ Ledger update failed: {e}"
     await update.message.reply_text(
-        f"🔗 [Direct link]({urls[0]})\nUpdated {updated} ledger row(s).",
+        f"🔗 [Direct link]({urls[0]}){note}",
         parse_mode="Markdown",
         disable_web_page_preview=True,
     )
@@ -1259,6 +1320,12 @@ async def cmd_uhrpsync(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     except uhrp_client.UHRPError as e:
         await update.message.reply_text(f"❌ Sync failed: {e}")
         return
+    except Exception as e:
+        # Broader than UHRPError on purpose — e.g. the ledger file being open
+        # elsewhere raises a plain PermissionError, not a UHRPError.
+        logger.error(f"UHRP sync crashed: {e}")
+        await update.message.reply_text(f"❌ Sync crashed: {e}")
+        return
 
     lines = [
         "✅ *Sync complete*",
@@ -1290,11 +1357,17 @@ async def cmd_uhrprenew(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Renew failed: {e}")
         return
 
+    # Renewal already paid at this point — a ledger update failure must be
+    # reported as a warning, not as "Renew failed" (nothing to retry/re-pay).
     new_expiry = result.get("newExpiryTime")
+    ledger_note = ""
     if new_expiry:
-        uhrp_ledger.update_expiry(uhrp_url, new_expiry)
+        try:
+            uhrp_ledger.update_expiry(uhrp_url, new_expiry)
+        except Exception as e:
+            ledger_note = f"\n⚠️ Ledger update failed: {e}"
     await update.message.reply_text(
-        f"✅ Renewed. New expiry: `{new_expiry or 'unknown'}`  |  Paid: `{result.get('amount', '?')} sats`",
+        f"✅ Renewed. New expiry: `{new_expiry or 'unknown'}`  |  Paid: `{result.get('amount', '?')} sats`{ledger_note}",
         parse_mode="Markdown",
     )
 
@@ -1315,9 +1388,10 @@ async def cmd_uhrplist(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Ledger is empty. Use /uhrpupload or /uhrpdownload first.")
         return
 
+    icons = {"UPLOAD": "⬆️", "DOWNLOAD": "⬇️", "SYNCED": "🔄"}
     lines = ["📒 *Recent UHRP entries*"]
     for e in entries:
-        icon = "⬆️" if e["Direction"] == "UPLOAD" else "⬇️"
+        icon = icons.get(e["Direction"], "•")
         lines.append(f"{icon} `{e['Date']}` {e['Filename']} — `{e['UHRP URL'][:24]}…`")
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
@@ -1389,4 +1463,7 @@ def build_app():
     for name, handler in handlers:
         app.add_handler(CommandHandler(name, handler))
     app.add_handler(CallbackQueryHandler(callback_handler))
+    # CommandHandler can't see /uhrpupload when it's a caption, not message text —
+    # this MessageHandler catches that case (see cmd_uhrpupload_caption docstring).
+    app.add_handler(MessageHandler((filters.PHOTO | filters.Document.ALL) & filters.CAPTION, cmd_uhrpupload_caption))
     return app

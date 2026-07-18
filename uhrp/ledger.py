@@ -51,6 +51,26 @@ def ensure_dirs():
     FILES_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def unique_local_path(filename: str) -> Path:
+    """
+    Returns a path under FILES_DIR for filename, disambiguating with a
+    numeric suffix if a file by that name already exists — otherwise a
+    later upload/download reusing a common filename (e.g. "image.jpg")
+    would silently overwrite an earlier one still referenced by the ledger.
+    """
+    ensure_dirs()
+    candidate = FILES_DIR / filename
+    if not candidate.exists():
+        return candidate
+    stem, suffix = Path(filename).stem, Path(filename).suffix
+    n = 1
+    while True:
+        candidate = FILES_DIR / f"{stem}_{n}{suffix}"
+        if not candidate.exists():
+            return candidate
+        n += 1
+
+
 def _new_workbook() -> Workbook:
     wb = Workbook()
     ws: Worksheet = wb.active

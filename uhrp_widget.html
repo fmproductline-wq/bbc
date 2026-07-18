@@ -357,9 +357,6 @@ $("bbuCheckWalletBtn").addEventListener("click", async () => {
 // ── Upload queue ─────────────────────────────────────────────────────────
 let queue = []; // { file, rowEl }
 
-function renderQueueEmpty() {
-  if (!queue.length) $("bbuQueue").innerHTML = "";
-}
 function addToQueue(file) {
   const row = document.createElement("div");
   row.className = "bbu-queue-row";
@@ -399,15 +396,25 @@ $("bbuUploadAllBtn").addEventListener("click", async () => {
     statusEl.textContent = "Uploading…";
     setProgress(i / total, `Uploading ${file.name} (${i + 1}/${total})`);
 
+    let result;
     try {
       const buf = new Uint8Array(await file.arrayBuffer());
       const sha256 = await sha256Hex(buf);
       const uploader = new StorageUploader({ storageURL: STORAGE_URL, wallet: getWallet() });
-      const result = await uploader.publishFile({
+      result = { ...(await uploader.publishFile({
         file: { data: buf, type: file.type || "application/octet-stream" },
         retentionPeriod: retentionMinutes,
-      });
+      })), buf, sha256 };
+    } catch (err) {
+      statusEl.textContent = "❌ Failed";
+      log(`❌ ${file.name} failed: ${err.message || err}`, "bad");
+      continue;
+    }
 
+    // The file is already uploaded and PAID FOR at this point — anything
+    // below (resolve, thumbnail, ledger write) failing must not be reported
+    // as an upload failure, or a retry would pay for the same file twice.
+    try {
       let directLink = null;
       try {
         const downloader = new StorageDownloader({ networkPreset: NETWORK_PRESET });
@@ -421,8 +428,8 @@ $("bbuUploadAllBtn").addEventListener("click", async () => {
         direction: "UPLOAD",
         filename: file.name,
         contentType: file.type || "application/octet-stream",
-        size: buf.length,
-        sha256,
+        size: result.buf.length,
+        sha256: result.sha256,
         uhrpUrl: result.uhrpURL,
         directLink,
         hostedBy: result.hostedBy || [],
@@ -433,8 +440,9 @@ $("bbuUploadAllBtn").addEventListener("click", async () => {
       log(`✅ ${file.name} → ${result.uhrpURL}`, "ok");
       if (!directLink) log(`   Direct link pending — use Sync from Host once it propagates.`, "warn");
     } catch (err) {
-      statusEl.textContent = "❌ Failed";
-      log(`❌ ${file.name} failed: ${err.message || err}`, "bad");
+      statusEl.textContent = "⚠️ Ledger failed";
+      log(`⚠️ ${file.name} uploaded but ledger write failed: ${err.message || err}`, "warn");
+      log(`   Save this — UHRP URL: ${result.uhrpURL}`, "warn");
     }
   }
 
@@ -447,15 +455,30 @@ $("bbuDownloadBtn").addEventListener("click", async () => {
   const uhrpUrl = $("bbuDownloadUrl").value.trim();
   if (!uhrpUrl) { log("Enter a UHRP URL to download.", "warn"); return; }
   log(`Downloading ${uhrpUrl}…`);
+  let result, blob;
   try {
     const downloader = new StorageDownloader({ networkPreset: NETWORK_PRESET });
-    const result = await downloader.download(uhrpUrl); // {data, mimeType}, hash-verified
-    const blob = new Blob([result.data], { type: result.mimeType || "application/octet-stream" });
+    result = await downloader.download(uhrpUrl); // {data, mimeType}, hash-verified
+    blob = new Blob([result.data], { type: result.mimeType || "application/octet-stream" });
+  } catch (err) {
+    log(`❌ Download failed: ${err.message || err}`, "bad");
+    return;
+  }
+
+  // The file is already downloaded and hash-verified at this point — save it
+  // to disk first, since that's the actual point of clicking Download; a
+  // thumbnail/ledger-write failure afterward shouldn't cost the user the file.
+  const shortHash = uhrpUrl.replace(/^uhrp:\/\//, "").replace(/^uhrp:/, "").slice(0, 16) || "uhrp_file";
+  const filename = shortHash;
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = blobUrl; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+  log(`✅ Downloaded and verified ${uhrpUrl}`, "ok");
+
+  try {
     const thumb = await thumbFromBlob(blob, result.mimeType);
-
-    const shortHash = uhrpUrl.replace(/^uhrp:\/\//, "").replace(/^uhrp:/, "").slice(0, 16) || "uhrp_file";
-    const filename = shortHash;
-
     addEntry({
       direction: "DOWNLOAD",
       filename,
@@ -467,37 +490,37 @@ $("bbuDownloadBtn").addEventListener("click", async () => {
       hostedBy: [],
       thumb,
     });
-
-    // Offer the file to save — normal browser download, works everywhere.
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = blobUrl; a.download = filename;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
-
     try {
+      const downloader = new StorageDownloader({ networkPreset: NETWORK_PRESET });
       const urls = await downloader.resolve(uhrpUrl);
       if (urls[0]) updateEntry(uhrpUrl, { directLink: urls[0] });
     } catch { /* not fatal */ }
-
-    log(`✅ Downloaded and verified ${uhrpUrl}`, "ok");
   } catch (err) {
-    log(`❌ Download failed: ${err.message || err}`, "bad");
+    log(`⚠️ File saved, but ledger write failed: ${err.message || err}`, "warn");
   }
 });
 
 // ── Sync + Renew ─────────────────────────────────────────────────────────
 $("bbuSyncBtn").addEventListener("click", async () => {
   log("Syncing ledger with UHRP host…");
+  let uploader, uploads;
   try {
-    const uploader = new StorageUploader({ storageURL: STORAGE_URL, wallet: getWallet() });
-    const uploads = await uploader.listUploads();
-    const known = knownUrls();
-    let updated = 0, added = 0;
+    uploader = new StorageUploader({ storageURL: STORAGE_URL, wallet: getWallet() });
+    uploads = await uploader.listUploads();
+  } catch (err) {
+    log(`❌ Sync failed: ${err.message || err}`, "bad");
+    return;
+  }
 
-    for (const entry of uploads) {
-      const uhrpUrl = entry.uhrpUrl;
-      if (!uhrpUrl) continue;
+  const known = knownUrls();
+  let updated = 0, added = 0, failed = 0;
+
+  for (const entry of uploads) {
+    const uhrpUrl = entry.uhrpUrl;
+    if (!uhrpUrl) continue;
+    // Each entry's ledger write is isolated so one bad row (e.g. a quota
+    // error) doesn't abort the loop and drop every file after it.
+    try {
       if (known.has(uhrpUrl)) {
         if (entry.expiryTime) {
           updateEntry(uhrpUrl, { expiryTime: entry.expiryTime, status: statusFor(entry.expiryTime) });
@@ -521,11 +544,12 @@ $("bbuSyncBtn").addEventListener("click", async () => {
         status: statusFor(details.expiryTime || entry.expiryTime),
       });
       added++;
+    } catch (err) {
+      failed++;
+      log(`⚠️ ${uhrpUrl.slice(0, 24)}… sync failed: ${err.message || err}`, "warn");
     }
-    log(`✅ Sync complete — ${updated} updated, ${added} added.`, "ok");
-  } catch (err) {
-    log(`❌ Sync failed: ${err.message || err}`, "bad");
   }
+  log(`✅ Sync complete — ${updated} updated, ${added} added${failed ? `, ${failed} failed` : ""}.`, "ok");
 });
 
 $("bbuRenewBtn").addEventListener("click", async () => {
@@ -536,15 +560,24 @@ $("bbuRenewBtn").addEventListener("click", async () => {
     return;
   }
   log(`Renewing ${uhrpUrl}…`);
+  let result;
   try {
     const uploader = new StorageUploader({ storageURL: STORAGE_URL, wallet: getWallet() });
-    const result = await uploader.renewFile(uhrpUrl, minutes);
-    if (result.newExpiryTime) {
-      updateEntry(uhrpUrl, { expiryTime: result.newExpiryTime, status: statusFor(result.newExpiryTime) });
-    }
-    log(`✅ Renewed — paid ${result.amount ?? "?"} sats, new expiry ${result.newExpiryTime || "unknown"}`, "ok");
+    result = await uploader.renewFile(uhrpUrl, minutes);
   } catch (err) {
     log(`❌ Renew failed: ${err.message || err}`, "bad");
+    return;
+  }
+
+  // Renewal already paid at this point — a ledger update failure must be
+  // reported as a warning, not folded into a "Renew failed" message.
+  log(`✅ Renewed — paid ${result.amount ?? "?"} sats, new expiry ${result.newExpiryTime || "unknown"}`, "ok");
+  if (result.newExpiryTime) {
+    try {
+      updateEntry(uhrpUrl, { expiryTime: result.newExpiryTime, status: statusFor(result.newExpiryTime) });
+    } catch (err) {
+      log(`⚠️ Renewed, but ledger update failed: ${err.message || err}`, "warn");
+    }
   }
 });
 

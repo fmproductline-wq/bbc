@@ -53,7 +53,7 @@ class UHRPTab(ctk.CTkFrame):
     def __init__(self, master, app, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
         self.app = app
-        self._files: list[dict] = []  # {path, filename, size, status_lbl, link}
+        self._files: list[dict] = []  # {path, filename, size, status_lbl, status}
         self._build()
         self._refresh_wallet_status(silent=True)
 
@@ -240,6 +240,11 @@ class UHRPTab(ctk.CTkFrame):
         except uhrp_client.UHRPError as e:
             self.after(0, self._log, f"❌ Sync failed: {e}", "ERROR")
             return
+        except Exception as e:
+            # Broader than UHRPError on purpose — e.g. the ledger file being
+            # open elsewhere raises a plain PermissionError.
+            self.after(0, self._log, f"❌ Sync crashed: {e}", "ERROR")
+            return
         self.after(0, self._log,
                     f"✅ Sync complete — {result['updated']} updated, {result['added']} added.", "SUCCESS")
         if result["errors"]:
@@ -266,9 +271,14 @@ class UHRPTab(ctk.CTkFrame):
         except uhrp_client.UHRPError as e:
             self.after(0, self._log, f"❌ Renew failed: {e}", "ERROR")
             return
+        # Renewal already paid at this point — a ledger update failure must be
+        # reported as a warning, not folded into a "Renew failed" message.
         new_expiry = result.get("newExpiryTime")
         if new_expiry:
-            uhrp_ledger.update_expiry(uhrp_url, new_expiry)
+            try:
+                uhrp_ledger.update_expiry(uhrp_url, new_expiry)
+            except Exception as e:
+                self.after(0, self._log, f"⚠️ Renewed, but ledger update failed: {e}", "WARNING")
         self.after(0, self._log,
                     f"✅ Renewed — paid {result.get('amount', '?')} sats, new expiry {new_expiry or 'unknown'}",
                     "SUCCESS")
@@ -400,15 +410,26 @@ class UHRPTab(ctk.CTkFrame):
 
             try:
                 result = uhrp_client.upload_file(f["path"], retention)
-                uhrp_url = result["uhrpURL"]
+            except Exception as e:
+                # Broader than UHRPError on purpose — one bad file must not kill
+                # the thread and strand the rest of the queue unprocessed.
+                f["status"] = "Failed"
+                self.after(0, f["status_lbl"].configure, {"text": "❌ Failed", "text_color": RED})
+                self.after(0, self._log, f"❌ {f['filename']} failed: {e}", "ERROR")
+                continue
 
-                direct_link = None
-                try:
-                    urls = uhrp_client.resolve_url(uhrp_url)
-                    direct_link = urls[0] if urls else None
-                except uhrp_client.UHRPError:
-                    pass
+            uhrp_url = result["uhrpURL"]
+            direct_link = None
+            try:
+                urls = uhrp_client.resolve_url(uhrp_url)
+                direct_link = urls[0] if urls else None
+            except uhrp_client.UHRPError:
+                pass
 
+            # The file is already uploaded and PAID FOR at this point — a ledger
+            # write failure must not be reported as an upload failure, or a retry
+            # would pay for the same file twice.
+            try:
                 row = uhrp_ledger.add_entry(
                     direction="UPLOAD",
                     filename=f["filename"],
@@ -421,18 +442,20 @@ class UHRPTab(ctk.CTkFrame):
                     local_path=f["path"],
                     requested_by="desktop-ui",
                 )
-                f["status"] = "Uploaded"
-                self.after(0, f["status_lbl"].configure, {"text": "✅ Uploaded", "text_color": GREEN})
-                self.after(0, self._log, f"✅ {f['filename']} → {uhrp_url}  (ledger row {row})", "SUCCESS")
-                if direct_link:
-                    self.after(0, self._log, f"   Direct link: {direct_link}", "SUCCESS")
-                else:
-                    self.after(0, self._log, "   Direct link pending — resolve later once it propagates.", "WARNING")
+            except Exception as e:
+                f["status"] = "Uploaded (ledger failed)"
+                self.after(0, f["status_lbl"].configure, {"text": "⚠️ Ledger failed", "text_color": YELLOW})
+                self.after(0, self._log, f"⚠️ {f['filename']} uploaded but ledger write failed: {e}", "WARNING")
+                self.after(0, self._log, f"   Save this — UHRP URL: {uhrp_url}", "WARNING")
+                continue
 
-            except uhrp_client.UHRPError as e:
-                f["status"] = "Failed"
-                self.after(0, f["status_lbl"].configure, {"text": "❌ Failed", "text_color": RED})
-                self.after(0, self._log, f"❌ {f['filename']} failed: {e}", "ERROR")
+            f["status"] = "Uploaded"
+            self.after(0, f["status_lbl"].configure, {"text": "✅ Uploaded", "text_color": GREEN})
+            self.after(0, self._log, f"✅ {f['filename']} → {uhrp_url}  (ledger row {row})", "SUCCESS")
+            if direct_link:
+                self.after(0, self._log, f"   Direct link: {direct_link}", "SUCCESS")
+            else:
+                self.after(0, self._log, "   Direct link pending — resolve later once it propagates.", "WARNING")
 
         self.after(0, self._set_progress, 1.0, "Upload Progress — 100%")
 
@@ -463,25 +486,34 @@ class UHRPTab(ctk.CTkFrame):
         mime_type = result.get("mimeType") or "application/octet-stream"
         ext = mimetypes.guess_extension(mime_type) or ""
         final_path = uhrp_ledger.FILES_DIR / f"{short_hash}{ext}"
-        tmp_path.rename(final_path)
+        if tmp_path != final_path:
+            # Path.rename() raises FileExistsError on Windows if final_path
+            # already exists (e.g. this exact file was downloaded before);
+            # .replace() is the cross-platform atomic-overwrite equivalent.
+            tmp_path.replace(final_path)
 
-        row = uhrp_ledger.add_entry(
-            direction="DOWNLOAD",
-            filename=final_path.name,
-            content_type=mime_type,
-            size=result.get("size", 0),
-            sha256=uhrp_client.local_sha256(str(final_path)),
-            uhrp_url=uhrp_url,
-            direct_link=None,
-            hosted_by=[],
-            local_path=str(final_path),
-            requested_by="desktop-ui",
-        )
         try:
             urls = uhrp_client.resolve_url(uhrp_url)
-            if urls:
-                uhrp_ledger.update_direct_link(uhrp_url, urls[0])
+            direct_link = urls[0] if urls else None
         except uhrp_client.UHRPError:
-            pass
+            direct_link = None
 
-        self.after(0, self._log, f"✅ Downloaded → {final_path}  (ledger row {row})", "SUCCESS")
+        # The file is already downloaded and hash-verified on disk at this
+        # point — a ledger write failure shouldn't be reported as a download
+        # failure, since the file itself is fine and sitting right there.
+        try:
+            row = uhrp_ledger.add_entry(
+                direction="DOWNLOAD",
+                filename=final_path.name,
+                content_type=mime_type,
+                size=result.get("size", 0),
+                sha256=uhrp_client.local_sha256(str(final_path)),
+                uhrp_url=uhrp_url,
+                direct_link=direct_link,
+                hosted_by=[],
+                local_path=str(final_path),
+                requested_by="desktop-ui",
+            )
+            self.after(0, self._log, f"✅ Downloaded → {final_path}  (ledger row {row})", "SUCCESS")
+        except Exception as e:
+            self.after(0, self._log, f"⚠️ Downloaded to {final_path}, but ledger write failed: {e}", "WARNING")
