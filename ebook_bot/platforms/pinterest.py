@@ -1,40 +1,40 @@
-"""
-Pinterest Pin creation via Pinterest API v5.
-"""
+"""Pinterest Pin creation via Pinterest API v5."""
+import os
 import requests
 from loguru import logger
-from ..config import PINTEREST_ACCESS_TOKEN, PINTEREST_BOARD_ID, EBOOK
+from ..config import get_ebook
 
 BASE = "https://api.pinterest.com/v5"
 
 
 def post(description: str, link: str, image_url: str = "") -> dict | None:
     """Create a Pinterest Pin."""
-    if not PINTEREST_ACCESS_TOKEN or not PINTEREST_BOARD_ID:
+    token    = os.getenv("PINTEREST_ACCESS_TOKEN", "")
+    board_id = os.getenv("PINTEREST_BOARD_ID", "")
+    if not token or not board_id:
         logger.warning("Pinterest credentials not configured, skipping.")
         return None
 
-    image_url = image_url or EBOOK.get("cover_image_url", "")
+    ebook = get_ebook()
+    image_url = image_url or ebook.get("cover_image_url", "")
     if not image_url:
-        logger.warning("Pinterest requires an image URL; skipping.")
+        logger.warning("Pinterest requires an image URL (EBOOK_COVER_IMAGE_URL); skipping.")
         return None
 
-    headers = {
-        "Authorization": f"Bearer {PINTEREST_ACCESS_TOKEN}",
-        "Content-Type": "application/json",
-    }
     payload = {
-        "board_id": PINTEREST_BOARD_ID,
-        "title": EBOOK.get("title", ""),
+        "board_id": board_id,
+        "title": ebook.get("title", ""),
         "description": description,
         "link": link,
-        "media_source": {
-            "source_type": "image_url",
-            "url": image_url,
-        },
+        "media_source": {"source_type": "image_url", "url": image_url},
     }
     try:
-        r = requests.post(f"{BASE}/pins", json=payload, headers=headers, timeout=15)
+        r = requests.post(
+            f"{BASE}/pins",
+            json=payload,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            timeout=15,
+        )
         r.raise_for_status()
         pin_id = r.json().get("id", "unknown")
         logger.success(f"Pinterest: created pin {pin_id}")

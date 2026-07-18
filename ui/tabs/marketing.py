@@ -666,23 +666,21 @@ class MarketingTab(ctk.CTkFrame):
 
     def _do_campaign(self):
         try:
-            # Apply env vars from UI settings in memory
+            # Push UI values into os.environ BEFORE calling the orchestrator.
+            # All bot modules read credentials fresh from os.environ on each
+            # call, so no module reload is needed.
             self._apply_settings_to_env()
             active = [p for p, v in self._platform_vars.items() if v.get()]
-            import importlib
-            # Patch ACTIVE_PLATFORMS env var
-            os.environ["ACTIVE_PLATFORMS"] = ",".join(active)
+            os.environ["ACTIVE_PLATFORMS"] = ",".join(active) if active else "all"
 
-            # Lazy import so settings are applied first
             try:
-                import ebook_bot.orchestrator as orch
-                importlib.reload(orch)
-                results = orch.run_campaign(
+                from ebook_bot.orchestrator import run_campaign
+                results = run_campaign(
                     use_ai=self._use_ai_var.get(),
                     style_hint=self._style_var.get(),
                 )
             except ImportError as ie:
-                results = {"_summary": {"success": [], "failed": [], "link": ""}, "_error": str(ie)}
+                results = {"_summary": {"success": [], "failed": [], "link": ""}, "error": str(ie)}
 
             summary = results.get("_summary", {})
             ok = summary.get("success", [])
@@ -705,7 +703,11 @@ class MarketingTab(ctk.CTkFrame):
             self.after(0, lambda _r=rate: self._stat_tiles["success_rate"].configure(text=_r))
             self.after(0, lambda _n=now: self._stat_tiles["last_run"].configure(text=_n))
 
-            msg = f"Done — posted to {ok}" if ok else "Campaign finished with no successful posts."
+            # Surface any top-level error (e.g. no purchase link)
+            if results.get("error"):
+                self.after(0, self._log, f"Campaign error: {results['error']}", RED)
+
+            msg = f"Done — posted to: {ok}" if ok else "Campaign finished — no posts sent (check credentials/link)."
             self.after(0, self._log, msg, GREEN if ok else RED)
             self.after(0, self._set_progress, "Idle" if ok else "Errors — check log", GREEN if ok else RED)
 
@@ -746,18 +748,23 @@ class MarketingTab(ctk.CTkFrame):
         threading.Thread(target=self._do_generate_all, args=(active,), daemon=True).start()
 
     def _do_generate_all(self, platforms: list[str]):
+        # Apply settings first so ai_writer and templates read fresh env vars.
         self._apply_settings_to_env()
+        # Import once outside the loop — modules read os.environ at call-time.
+        from ebook_bot.content import ai_writer, templates
+        from ebook_bot.config import get_ebook
+        ebook = get_ebook()
+        use_ai = self._use_ai_var.get() and bool(os.getenv("ANTHROPIC_API_KEY"))
+        style_hint = self._style_var.get()
+
         for p in platforms:
             self.after(0, self._log, f"Generating {p}...")
             try:
-                from ebook_bot.content import ai_writer, templates
-                from ebook_bot import config as ecfg
-                import importlib; importlib.reload(ecfg)
-                if self._use_ai_var.get() and os.getenv("ANTHROPIC_API_KEY"):
-                    text = ai_writer.generate_post(p, "(link)", style_hint=self._style_var.get())
+                if use_ai:
+                    text = ai_writer.generate_post(p, "(your-link)", ebook=ebook, style_hint=style_hint)
                 else:
-                    style = "short" if p in ("twitter", "instagram", "telegram") else "medium"
-                    text = templates.render_template(templates.pick_template(style), ecfg.EBOOK, "(link)")
+                    style = "short" if p in ("twitter", "instagram", "telegram", "pinterest") else "medium"
+                    text = templates.render_template(templates.pick_template(style), ebook, "(your-link)")
                 self._generated[p] = text
                 tb = self._content_textboxes.get(p)
                 if tb:
@@ -788,21 +795,26 @@ class MarketingTab(ctk.CTkFrame):
         self._apply_settings_to_env()
         try:
             from ebook_bot.orchestrator import _get_best_link
-            link = _get_best_link()
-            text = text.replace("(link)", link)
-
             from ebook_bot.platforms import (twitter, linkedin, facebook,
                                               instagram, reddit, pinterest,
                                               telegram_channel)
+            link = _get_best_link()
+            # Replace placeholder link inserted during content generation
+            text = text.replace("(your-link)", link).replace("(link)", link)
+            cover = os.getenv("EBOOK_COVER_IMAGE_URL", "")
+
             handlers = {
                 "twitter":   lambda t: twitter.post(t),
                 "linkedin":  lambda t: linkedin.post(t),
                 "facebook":  lambda t: facebook.post(t),
-                "instagram": lambda t: instagram.post(t, image_url=os.getenv("EBOOK_COVER_IMAGE_URL", "")),
+                "instagram": lambda t: instagram.post(t, image_url=cover),
                 "reddit":    lambda t: reddit.post(t, link=link),
-                "pinterest": lambda t: pinterest.post(t, link=link),
+                "pinterest": lambda t: pinterest.post(t, link=link, image_url=cover),
                 "telegram":  lambda t: telegram_channel.post(t),
             }
+            if platform not in handlers:
+                self.after(0, self._log, f"Unknown platform: {platform}", RED)
+                return
             result = handlers[platform](text)
             if result:
                 self.after(0, self._log, f"Posted to {platform}!", GREEN)
@@ -815,7 +827,8 @@ class MarketingTab(ctk.CTkFrame):
 
     def _post_all_generated(self):
         for p, text in list(self._generated.items()):
-            if text and self._platform_vars.get(p, ctk.BooleanVar()).get():
+            var = self._platform_vars.get(p)
+            if text and var is not None and var.get():
                 threading.Thread(target=self._do_post_one, args=(p, text), daemon=True).start()
 
     def _generate_emails(self, count: int):

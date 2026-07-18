@@ -1,23 +1,22 @@
-"""
-Telegram channel broadcasting via Bot API.
-"""
+"""Telegram channel broadcasting via Bot API."""
+import os
 import requests
 from loguru import logger
-from ..config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL_ID
 
 
 def post(text: str) -> dict | None:
     """Send a message to the configured Telegram channel."""
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
+    token      = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    channel_id = os.getenv("TELEGRAM_CHANNEL_ID", "")
+    if not token or not channel_id:
         logger.warning("Telegram channel not configured, skipping.")
         return None
 
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     try:
         r = requests.post(
-            url,
+            f"https://api.telegram.org/bot{token}/sendMessage",
             json={
-                "chat_id": TELEGRAM_CHANNEL_ID,
+                "chat_id": channel_id,
                 "text": text,
                 "parse_mode": "Markdown",
                 "disable_web_page_preview": False,

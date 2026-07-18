@@ -1,11 +1,10 @@
 """
 Pre-written post templates. Each is a Python format string that accepts
 keyword arguments from the ebook config dict.
-Organized by platform character limits and style.
 """
 import random
+from ..config import get_ebook
 
-# Short posts (Twitter / X — 280 chars)
 SHORT_TEMPLATES = [
     "📚 {title} — {tagline}\n\nGet your copy today for only {price}!\n\n👉 {link}\n\n#ebook #mustread",
     "Stop scrolling. Start reading.\n\n{title} by {author} is the book you've been waiting for.\n\n{price} → {link}",
@@ -17,7 +16,6 @@ SHORT_TEMPLATES = [
     "Your next best investment: {title} by {author}\n\nOnly {price} | Instant access\n{link}",
 ]
 
-# Medium posts (LinkedIn / Facebook)
 MEDIUM_TEMPLATES = [
     """\
 🚀 Exciting news — my new ebook "{title}" is now available!
@@ -71,7 +69,6 @@ What would you do with the right information at the right time?
 Like and share if you found this helpful! 💪""",
 ]
 
-# Long-form / blog-style (can be used as LinkedIn articles or Facebook Notes)
 LONG_TEMPLATES = [
     """\
 Why I Wrote "{title}" — And Why You Should Read It
@@ -93,28 +90,25 @@ Questions? Drop them below. I read every comment.""",
 
 def pick_template(style: str = "short") -> str:
     """Return a random template for the given style: short | medium | long."""
-    mapping = {
-        "short": SHORT_TEMPLATES,
-        "medium": MEDIUM_TEMPLATES,
-        "long": LONG_TEMPLATES,
-    }
-    pool = mapping.get(style, SHORT_TEMPLATES)
+    pool = {"short": SHORT_TEMPLATES, "medium": MEDIUM_TEMPLATES, "long": LONG_TEMPLATES}.get(style, SHORT_TEMPLATES)
     return random.choice(pool)
 
 
-def render_template(template: str, ebook: dict, link: str) -> str:
-    """Fill a template with ebook metadata."""
+def render_template(template: str, ebook: dict = None, link: str = "") -> str:
+    """Fill a template with ebook metadata. Reads fresh config if ebook is None."""
+    ebook = ebook or get_ebook()
     topics = [t.strip() for t in ebook.get("topics", []) if t.strip()]
-    topics_list = "\n".join(f"• {t}" for t in topics) if topics else "• Key strategies\n• Proven methods"
+    topics_list    = "\n".join(f"• {t}" for t in topics) if topics else "• Key strategies\n• Proven methods"
     topics_preview = ", ".join(topics[:3]) if topics else "key topics"
     tag1 = topics[0].replace(" ", "").lower() if topics else "selfimprovement"
     tag2 = topics[1].replace(" ", "").lower() if len(topics) > 1 else "growth"
+    description    = ebook.get("description", "") or ebook.get("tagline", "")
 
     return template.format(
         title=ebook.get("title", ""),
         tagline=ebook.get("tagline", ""),
         price=ebook.get("price", ""),
-        description=ebook.get("description", ebook.get("tagline", "")),
+        description=description,
         author=ebook.get("author", ""),
         link=link,
         topics_list=topics_list,

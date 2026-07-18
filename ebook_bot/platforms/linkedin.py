@@ -1,26 +1,26 @@
-"""
-LinkedIn posting via LinkedIn Marketing API v2 (UGC Posts).
-"""
+"""LinkedIn posting via LinkedIn Marketing API v2 (UGC Posts)."""
+import os
 import requests
 from loguru import logger
-from ..config import LINKEDIN_ACCESS_TOKEN, LINKEDIN_PERSON_URN
 
 BASE = "https://api.linkedin.com/v2"
 
 
 def post(text: str) -> dict | None:
     """Publish a text post to the authenticated user's LinkedIn feed."""
-    if not LINKEDIN_ACCESS_TOKEN or not LINKEDIN_PERSON_URN:
+    token = os.getenv("LINKEDIN_ACCESS_TOKEN", "")
+    urn   = os.getenv("LINKEDIN_PERSON_URN", "")
+    if not token or not urn:
         logger.warning("LinkedIn credentials not configured, skipping.")
         return None
 
     headers = {
-        "Authorization": f"Bearer {LINKEDIN_ACCESS_TOKEN}",
+        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
         "X-Restli-Protocol-Version": "2.0.0",
     }
     payload = {
-        "author": LINKEDIN_PERSON_URN,
+        "author": urn,
         "lifecycleState": "PUBLISHED",
         "specificContent": {
             "com.linkedin.ugc.ShareContent": {
@@ -30,7 +30,6 @@ def post(text: str) -> dict | None:
         },
         "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
     }
-
     try:
         r = requests.post(f"{BASE}/ugcPosts", json=payload, headers=headers, timeout=15)
         r.raise_for_status()

@@ -18,6 +18,8 @@ def main():
     if cmd == "run":
         from .orchestrator import run_campaign
         results = run_campaign(use_ai=True)
+        if results.get("error"):
+            logger.error(results["error"])
         print(json.dumps(results, indent=2, default=str))
 
     elif cmd == "schedule":
@@ -32,7 +34,9 @@ def main():
     elif cmd == "email":
         from .content.ai_writer import generate_email_sequence
         from .orchestrator import _get_best_link
-        link = _get_best_link()
+        link = _get_best_link() or "https://your-sales-link.com"
+        if link == "https://your-sales-link.com":
+            logger.warning("No sales platform configured — using placeholder link in emails.")
         emails = generate_email_sequence(link)
         for i, email in enumerate(emails, 1):
             print(f"\n{'='*60}")

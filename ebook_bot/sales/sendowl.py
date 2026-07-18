@@ -1,48 +1,51 @@
-"""
-SendOwl API integration.
-Docs: https://www.sendowl.com/developers/api/introduction
-"""
+"""SendOwl API integration. Docs: https://www.sendowl.com/developers/api/introduction"""
+import os
 import requests
 from loguru import logger
-from ..config import SENDOWL_API_KEY, SENDOWL_API_SECRET, SENDOWL_PRODUCT_ID
 
 BASE = "https://www.sendowl.com/api/v1"
 
 
 def _auth() -> tuple:
-    return (SENDOWL_API_KEY, SENDOWL_API_SECRET)
+    return (os.getenv("SENDOWL_API_KEY", ""), os.getenv("SENDOWL_API_SECRET", ""))
 
 
 def get_product_link() -> str:
     """Return the buy-now URL for the SendOwl product."""
-    if not SENDOWL_API_KEY or not SENDOWL_PRODUCT_ID:
+    product_id = os.getenv("SENDOWL_PRODUCT_ID", "")
+    if not os.getenv("SENDOWL_API_KEY") or not product_id:
         return ""
-    r = requests.get(
-        f"{BASE}/products/{SENDOWL_PRODUCT_ID}",
-        auth=_auth(),
-        headers={"Accept": "application/json"},
-        timeout=15,
-    )
-    if r.status_code != 200:
-        logger.warning(f"SendOwl product fetch failed: {r.text}")
+    try:
+        r = requests.get(
+            f"{BASE}/products/{product_id}",
+            auth=_auth(),
+            headers={"Accept": "application/json"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        return r.json().get("product", {}).get("sales_page_url", "")
+    except requests.RequestException as e:
+        logger.warning(f"SendOwl product fetch failed: {e}")
         return ""
-    data = r.json()
-    return data.get("product", {}).get("sales_page_url", "")
 
 
 def get_orders() -> list[dict]:
     """Fetch recent orders from SendOwl."""
-    if not SENDOWL_API_KEY:
+    if not os.getenv("SENDOWL_API_KEY"):
         return []
-    r = requests.get(
-        f"{BASE}/orders",
-        auth=_auth(),
-        headers={"Accept": "application/json"},
-        timeout=15,
-    )
-    r.raise_for_status()
-    data = r.json()
-    # API returns either a list of order objects or a wrapped dict
-    if isinstance(data, list):
-        return [item.get("order", item) for item in data]
-    return data.get("orders", [])
+    try:
+        r = requests.get(
+            f"{BASE}/orders",
+            auth=_auth(),
+            headers={"Accept": "application/json"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        data = r.json()
+        # API returns a list of {"order": {...}} wrappers or a plain list
+        if isinstance(data, list):
+            return [item.get("order", item) for item in data]
+        return data.get("orders", [])
+    except requests.RequestException as e:
+        logger.warning(f"SendOwl orders fetch failed: {e}")
+        return []
