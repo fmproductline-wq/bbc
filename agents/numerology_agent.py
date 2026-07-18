@@ -14,8 +14,7 @@ from __future__ import annotations
 import math
 import os
 import re
-from datetime import date, datetime, timezone
-from typing import Optional
+from datetime import date
 
 # ── optional heavy imports (fail gracefully so the app still boots) ───────────
 try:
@@ -40,9 +39,6 @@ ZODIAC_SIGNS = [
     "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces",
 ]
 
-PLANETS = ["Sun", "Moon", "Mercury", "Venus", "Mars",
-           "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"]
-
 PLANET_SYMBOLS = {
     "Sun": "☉", "Moon": "☽", "Mercury": "☿", "Venus": "♀",
     "Mars": "♂", "Jupiter": "♃", "Saturn": "♄",
@@ -58,33 +54,33 @@ PYTHAGOREAN = {
 VOWELS = set("AEIOU")
 
 NUMEROLOGY_MEANINGS: dict[int, str] = {
-    1: "Leadership, independence, originality, pioneering spirit",
-    2: "Partnership, diplomacy, balance, sensitivity, cooperation",
-    3: "Creativity, self-expression, joy, communication, optimism",
-    4: "Stability, discipline, hard work, practicality, foundation",
-    5: "Freedom, adventure, change, versatility, progressive thinking",
-    6: "Nurturing, responsibility, home, family, harmony, service",
-    7: "Spirituality, introspection, wisdom, analysis, mysticism",
-    8: "Power, abundance, authority, ambition, material success",
-    9: "Compassion, humanitarianism, completion, universal love",
+    1:  "Leadership, independence, originality, pioneering spirit",
+    2:  "Partnership, diplomacy, balance, sensitivity, cooperation",
+    3:  "Creativity, self-expression, joy, communication, optimism",
+    4:  "Stability, discipline, hard work, practicality, foundation",
+    5:  "Freedom, adventure, change, versatility, progressive thinking",
+    6:  "Nurturing, responsibility, home, family, harmony, service",
+    7:  "Spirituality, introspection, wisdom, analysis, mysticism",
+    8:  "Power, abundance, authority, ambition, material success",
+    9:  "Compassion, humanitarianism, completion, universal love",
     11: "Master Number — Intuition, spiritual illumination, inspiration",
     22: "Master Number — Master Builder, visionary pragmatism, manifestation",
     33: "Master Number — Master Teacher, unconditional love, healing",
 }
 
 SIGN_MEANINGS: dict[str, str] = {
-    "Aries": "Bold, pioneering, competitive, action-oriented",
-    "Taurus": "Grounded, sensual, patient, determined, love of beauty",
-    "Gemini": "Curious, adaptable, witty, communicative, dual-natured",
-    "Cancer": "Nurturing, intuitive, emotional, protective, home-loving",
-    "Leo": "Confident, generous, creative, dramatic, leadership",
-    "Virgo": "Analytical, precise, helpful, health-conscious, practical",
-    "Libra": "Balanced, charming, fair, social, aesthetically inclined",
-    "Scorpio": "Intense, perceptive, transformative, passionate, secretive",
+    "Aries":       "Bold, pioneering, competitive, action-oriented",
+    "Taurus":      "Grounded, sensual, patient, determined, love of beauty",
+    "Gemini":      "Curious, adaptable, witty, communicative, dual-natured",
+    "Cancer":      "Nurturing, intuitive, emotional, protective, home-loving",
+    "Leo":         "Confident, generous, creative, dramatic, leadership",
+    "Virgo":       "Analytical, precise, helpful, health-conscious, practical",
+    "Libra":       "Balanced, charming, fair, social, aesthetically inclined",
+    "Scorpio":     "Intense, perceptive, transformative, passionate, secretive",
     "Sagittarius": "Adventurous, philosophical, optimistic, freedom-loving",
-    "Capricorn": "Ambitious, disciplined, responsible, strategic, patient",
-    "Aquarius": "Innovative, humanitarian, independent, visionary, eccentric",
-    "Pisces": "Empathic, creative, spiritual, compassionate, dreamy",
+    "Capricorn":   "Ambitious, disciplined, responsible, strategic, patient",
+    "Aquarius":    "Innovative, humanitarian, independent, visionary, eccentric",
+    "Pisces":      "Empathic, creative, spiritual, compassionate, dreamy",
 }
 
 
@@ -95,27 +91,23 @@ SIGN_MEANINGS: dict[str, str] = {
 def julian_day_number(d: date) -> int:
     """
     Compute the Julian Day Number (JDN) — the continuous integer day count
-    since noon Universal Time, Monday, January 1, 4713 BC (Julian calendar).
-    Uses the standard algorithm valid for all Gregorian dates.
+    since noon UT, Monday, January 1, 4713 BC (Julian calendar).
+    Standard algorithm valid for all Gregorian dates.
     """
     a = (14 - d.month) // 12
     y = d.year + 4800 - a
     m = d.month + 12 * a - 3
-    jdn = d.day + (153 * m + 2) // 5 + 365 * y + y // 4 - y // 100 + y // 400 - 32045
-    return jdn
+    return d.day + (153 * m + 2) // 5 + 365 * y + y // 4 - y // 100 + y // 400 - 32045
 
 
 def march21_day_number(d: date) -> int:
     """
-    Day number where March 21 = Day 1.
-    Models the astrological / vernal-equinox new year.
-    Returns 1–365 (or 366 in leap years).
+    Day number where March 21 = Day 1 (vernal-equinox new year).
+    Returns 1–365 (or 366 in a leap-year cycle).
     """
-    year = d.year
-    new_year = date(year, 3, 21)
+    new_year = date(d.year, 3, 21)
     if d < new_year:
-        # date falls before this year's March 21 → use previous year's cycle
-        new_year = date(year - 1, 3, 21)
+        new_year = date(d.year - 1, 3, 21)
     return (d - new_year).days + 1
 
 
@@ -128,9 +120,8 @@ def numerology_day_reduce(n: int) -> int:
     """
     Reduce a day-of-year count to a single digit (1–9) or Master Number (11/22/33).
     """
-    # Sum all digits repeatedly until ≤ 9, but preserve master numbers
     while n > 9 and n not in (11, 22, 33):
-        n = sum(int(d) for d in str(n))
+        n = sum(int(ch) for ch in str(n))
     return n
 
 
@@ -139,14 +130,15 @@ def numerology_day_reduce(n: int) -> int:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _digit_reduce(n: int) -> int:
+    """Reduce to single digit, preserving master numbers 11 / 22 / 33."""
     while n > 9 and n not in (11, 22, 33):
-        n = sum(int(d) for d in str(n))
+        n = sum(int(ch) for ch in str(n))
     return n
 
 
 def life_path_number(d: date) -> int:
-    """Classic life-path: sum day + month + year, then reduce."""
-    total = d.day + d.month + sum(int(c) for c in str(d.year))
+    """Classic life-path: sum day + month + year digits, then reduce."""
+    total = d.day + d.month + sum(int(ch) for ch in str(d.year))
     return _digit_reduce(total)
 
 
@@ -156,8 +148,9 @@ def name_to_digits(name: str) -> list[int]:
 
 
 def expression_number(full_name: str) -> int:
-    """All letters of the full birth name."""
-    return _digit_reduce(sum(name_to_digits(full_name)))
+    """All letters of the full birth name reduced."""
+    digits = name_to_digits(full_name)
+    return _digit_reduce(sum(digits)) if digits else 0
 
 
 def soul_urge_number(full_name: str) -> int:
@@ -175,21 +168,21 @@ def personality_number(full_name: str) -> int:
 
 
 def birthday_number(d: date) -> int:
-    """The raw day of birth reduced to a single/master digit."""
+    """The birth day reduced to a single/master digit."""
     return _digit_reduce(d.day)
 
 
 def personal_year_number(d: date, current_year: int | None = None) -> int:
-    """Personal Year = (month + day of birth) + current year, reduced."""
+    """Personal Year = (birth month + birth day) + current year, reduced."""
     cy = current_year or date.today().year
-    total = d.day + d.month + sum(int(c) for c in str(cy))
+    total = d.day + d.month + sum(int(ch) for ch in str(cy))
     return _digit_reduce(total)
 
 
 def full_numerology_profile(full_name: str, birth_date: date) -> dict:
-    jdn   = julian_day_number(birth_date)
-    m21n  = march21_day_number(birth_date)
-    j1n   = jan1_day_number(birth_date)
+    jdn  = julian_day_number(birth_date)
+    m21n = march21_day_number(birth_date)
+    j1n  = jan1_day_number(birth_date)
     return {
         "life_path":         life_path_number(birth_date),
         "expression":        expression_number(full_name),
@@ -209,50 +202,32 @@ def full_numerology_profile(full_name: str, birth_date: date) -> dict:
 # Tropical Natal Chart  (requires ephem)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _ecliptic_lon(body, d: date, t: str = "12:00", lat: float = 0.0, lon: float = 0.0) -> float:
-    """Return tropical ecliptic longitude in degrees (0–360)."""
-    obs = ephem.Observer()
-    obs.date = f"{d.year}/{d.month}/{d.day} {t}"
-    obs.lat  = str(lat)
-    obs.lon  = str(lon)
-    obs.elevation = 0
-    obs.pressure  = 0  # no atmospheric refraction
-
-    body.compute(obs)
-    ecl = ephem.Ecliptic(body, epoch=obs.date)
-    return math.degrees(float(ecl.lon)) % 360
-
-
 def _sign_and_degree(lon: float) -> tuple[str, float]:
     idx = int(lon / 30) % 12
-    deg = lon % 30
-    return ZODIAC_SIGNS[idx], deg
+    return ZODIAC_SIGNS[idx], lon % 30
 
 
 def _ascendant(obs: "ephem.Observer") -> float:
-    """Tropical Ascendant longitude in degrees."""
-    lst   = float(obs.sidereal_time())  # radians
-    eps_r = math.radians(23.4397)       # mean obliquity of ecliptic
+    """Tropical Ascendant ecliptic longitude in degrees (0–360)."""
+    lst   = float(obs.sidereal_time())   # Local Sidereal Time in radians
+    eps_r = math.radians(23.4397)        # mean obliquity of the ecliptic
     lat_r = float(obs.lat)
-    # RAMC = Right Ascension of Midheaven (in radians)
-    ramc = lst  # LST in radians
 
-    # Ascendant formula (Placidus):
-    # tan(Asc) = -cos(RAMC) / (sin(eps)*tan(lat) + cos(eps)*sin(RAMC))
-    num = -math.cos(ramc)
-    den = math.sin(eps_r) * math.tan(lat_r) + math.cos(eps_r) * math.sin(ramc)
+    # Standard formula: tan(Asc) = -cos(LST) / (sin(ε)·tan(φ) + cos(ε)·sin(LST))
+    num = -math.cos(lst)
+    den = math.sin(eps_r) * math.tan(lat_r) + math.cos(eps_r) * math.sin(lst)
     asc = math.degrees(math.atan2(num, den)) % 360
-    # Ascendant must be on the eastern horizon; adjust quadrant
-    if 0 <= ramc < math.pi:
+    # Ascendant lies on the eastern horizon; correct quadrant based on LST
+    if 0 <= lst < math.pi:
         asc = (asc + 180) % 360
     return asc
 
 
 def _midheaven(obs: "ephem.Observer") -> float:
-    """Tropical Midheaven (MC) longitude in degrees."""
-    lst  = float(obs.sidereal_time())
+    """Tropical Midheaven (MC) ecliptic longitude in degrees (0–360)."""
+    lst   = float(obs.sidereal_time())
     eps_r = math.radians(23.4397)
-    # MC formula: tan(MC) = tan(RAMC) / cos(eps)
+    # tan(MC) = tan(LST) / cos(ε)
     mc = math.degrees(math.atan2(math.tan(lst), math.cos(eps_r))) % 360
     if lst > math.pi:
         mc = (mc + 180) % 360
@@ -267,19 +242,19 @@ def calculate_natal_chart(
 ) -> dict:
     """
     Compute a full tropical natal chart.
-    birth_time: "HH:MM" in local time (user must convert to UTC themselves,
-                or pass birth_time="12:00" for solar chart if time is unknown).
-    lat/lon: birth location in decimal degrees (S/W negative).
-    Returns a dict with planetary positions, Asc, MC, and house data.
+
+    birth_time: "HH:MM" UTC (pass "12:00" for a solar chart if time is unknown).
+    lat / lon:  birth location in decimal degrees (S / W are negative).
+    Returns a dict with planetary positions, Asc, MC, and whole-sign houses.
     """
     if not _EPHEM_OK:
-        return {"error": "ephem library not installed — run: pip install ephem"}
+        return {"error": "ephem not installed — run: pip install ephem"}
 
     obs = ephem.Observer()
-    obs.date = f"{birth_date.year}/{birth_date.month}/{birth_date.day} {birth_time}"
-    obs.lat  = str(lat)
-    obs.lon  = str(lon)
-    obs.pressure = 0
+    obs.date      = f"{birth_date.year}/{birth_date.month}/{birth_date.day} {birth_time}"
+    obs.lat       = str(lat)
+    obs.lon       = str(lon)
+    obs.pressure  = 0   # disable atmospheric refraction
 
     planet_bodies = {
         "Sun":     ephem.Sun(),
@@ -298,7 +273,7 @@ def calculate_natal_chart(
     for name, body in planet_bodies.items():
         try:
             body.compute(obs)
-            ecl  = ephem.Ecliptic(body, epoch=obs.date)
+            ecl     = ephem.Ecliptic(body, epoch=obs.date)
             lon_deg = math.degrees(float(ecl.lon)) % 360
             sign, deg = _sign_and_degree(lon_deg)
             positions[name] = {
@@ -306,35 +281,32 @@ def calculate_natal_chart(
                 "sign":      sign,
                 "degree":    round(deg, 2),
                 "symbol":    PLANET_SYMBOLS.get(name, ""),
+                "meaning":   SIGN_MEANINGS.get(sign, ""),
             }
-        except Exception as e:
-            positions[name] = {"error": str(e)}
+        except Exception as exc:
+            positions[name] = {"error": str(exc)}
 
     try:
-        asc_lon = _ascendant(obs)
-        mc_lon  = _midheaven(obs)
+        asc_lon           = _ascendant(obs)
+        mc_lon            = _midheaven(obs)
         asc_sign, asc_deg = _sign_and_degree(asc_lon)
         mc_sign,  mc_deg  = _sign_and_degree(mc_lon)
     except Exception:
         asc_lon, asc_sign, asc_deg = 0.0, "Unknown", 0.0
         mc_lon,  mc_sign,  mc_deg  = 0.0, "Unknown", 0.0
 
-    # Whole-sign house cusps (simple: Asc sign = House 1)
     asc_sign_idx = ZODIAC_SIGNS.index(asc_sign) if asc_sign in ZODIAC_SIGNS else 0
-    houses = {
-        i + 1: ZODIAC_SIGNS[(asc_sign_idx + i) % 12]
-        for i in range(12)
-    }
+    houses = {i + 1: ZODIAC_SIGNS[(asc_sign_idx + i) % 12] for i in range(12)}
 
     return {
-        "planets":    positions,
-        "ascendant":  {"longitude": round(asc_lon, 4), "sign": asc_sign, "degree": round(asc_deg, 2)},
-        "midheaven":  {"longitude": round(mc_lon,  4), "sign": mc_sign,  "degree": round(mc_deg, 2)},
-        "houses":     houses,
-        "date":       str(birth_date),
-        "time":       birth_time,
-        "lat":        lat,
-        "lon":        lon,
+        "planets":   positions,
+        "ascendant": {"longitude": round(asc_lon, 4), "sign": asc_sign, "degree": round(asc_deg, 2)},
+        "midheaven": {"longitude": round(mc_lon,  4), "sign": mc_sign,  "degree": round(mc_deg,  2)},
+        "houses":    houses,
+        "date":      str(birth_date),
+        "time":      birth_time,
+        "lat":       lat,
+        "lon":       lon,
     }
 
 
@@ -342,78 +314,68 @@ def calculate_natal_chart(
 # Astrocartography  (requires ephem)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Simplified coast/city lookup for nearby-city labelling
 MAJOR_CITIES = [
-    ("New York",      40.71, -74.01),
+    ("New York",      40.71,  -74.01),
     ("Los Angeles",   34.05, -118.24),
-    ("Chicago",       41.88, -87.63),
-    ("Toronto",       43.65, -79.38),
-    ("London",        51.51,  -0.13),
-    ("Paris",         48.85,   2.35),
-    ("Berlin",        52.52,  13.40),
-    ("Rome",          41.90,  12.50),
-    ("Madrid",        40.42,  -3.70),
-    ("Moscow",        55.75,  37.62),
-    ("Dubai",         25.20,  55.27),
-    ("Mumbai",        19.08,  72.88),
-    ("Delhi",         28.61,  77.21),
-    ("Beijing",       39.91, 116.39),
-    ("Shanghai",      31.23, 121.47),
-    ("Tokyo",         35.69, 139.69),
-    ("Seoul",         37.57, 126.98),
-    ("Singapore",      1.35, 103.82),
-    ("Sydney",       -33.87, 151.21),
-    ("Melbourne",    -37.81, 144.96),
-    ("Johannesburg", -26.20,  28.04),
-    ("Cairo",         30.05,  31.24),
-    ("Lagos",          6.52,   3.38),
-    ("Nairobi",       -1.29,  36.82),
-    ("São Paulo",    -23.55, -46.63),
-    ("Buenos Aires", -34.60, -58.38),
-    ("Mexico City",   19.43, -99.13),
-    ("Miami",         25.77, -80.19),
+    ("Chicago",       41.88,  -87.63),
+    ("Toronto",       43.65,  -79.38),
+    ("London",        51.51,   -0.13),
+    ("Paris",         48.85,    2.35),
+    ("Berlin",        52.52,   13.40),
+    ("Rome",          41.90,   12.50),
+    ("Madrid",        40.42,   -3.70),
+    ("Moscow",        55.75,   37.62),
+    ("Dubai",         25.20,   55.27),
+    ("Mumbai",        19.08,   72.88),
+    ("Delhi",         28.61,   77.21),
+    ("Beijing",       39.91,  116.39),
+    ("Shanghai",      31.23,  121.47),
+    ("Tokyo",         35.69,  139.69),
+    ("Seoul",         37.57,  126.98),
+    ("Singapore",      1.35,  103.82),
+    ("Sydney",       -33.87,  151.21),
+    ("Melbourne",    -37.81,  144.96),
+    ("Johannesburg", -26.20,   28.04),
+    ("Cairo",         30.05,   31.24),
+    ("Lagos",          6.52,    3.38),
+    ("Nairobi",       -1.29,   36.82),
+    ("São Paulo",    -23.55,  -46.63),
+    ("Buenos Aires", -34.60,  -58.38),
+    ("Mexico City",   19.43,  -99.13),
+    ("Miami",         25.77,  -80.19),
     ("Vancouver",     49.25, -123.12),
-    ("Amsterdam",     52.37,   4.90),
-    ("Stockholm",     59.33,  18.07),
-    ("Athens",        37.98,  23.73),
-    ("Istanbul",      41.01,  28.95),
-    ("Tel Aviv",      32.09,  34.79),
-    ("Bangkok",       13.76, 100.50),
-    ("Jakarta",       -6.21, 106.85),
-    ("Karachi",       24.86,  67.01),
-    ("Lahore",        31.55,  74.34),
-    ("Bogotá",         4.71, -74.07),
-    ("Lima",          -12.05, -77.04),
-    ("Casablanca",    33.57,  -7.59),
-    ("Accra",          5.56,  -0.20),
-    ("Addis Ababa",    9.03,  38.74),
-    ("Riyadh",        24.69,  46.72),
-    ("Kuala Lumpur",   3.14, 101.69),
-    ("Manila",        14.60, 120.98),
-    ("Ho Chi Minh",   10.82, 106.63),
-    ("Dhaka",         23.81,  90.41),
-    ("Kathmandu",     27.70,  85.32),
-    ("Colombo",        6.93,  79.85),
+    ("Amsterdam",     52.37,    4.90),
+    ("Stockholm",     59.33,   18.07),
+    ("Athens",        37.98,   23.73),
+    ("Istanbul",      41.01,   28.95),
+    ("Tel Aviv",      32.09,   34.79),
+    ("Bangkok",       13.76,  100.50),
+    ("Jakarta",       -6.21,  106.85),
+    ("Karachi",       24.86,   67.01),
+    ("Lahore",        31.55,   74.34),
+    ("Bogotá",         4.71,  -74.07),
+    ("Lima",         -12.05,  -77.04),
+    ("Casablanca",    33.57,   -7.59),
+    ("Accra",          5.56,   -0.20),
+    ("Addis Ababa",    9.03,   38.74),
+    ("Riyadh",        24.69,   46.72),
+    ("Kuala Lumpur",   3.14,  101.69),
+    ("Manila",        14.60,  120.98),
+    ("Ho Chi Minh",   10.82,  106.63),
+    ("Dhaka",         23.81,   90.41),
+    ("Kathmandu",     27.70,   85.32),
+    ("Colombo",        6.93,   79.85),
 ]
 
 
 def _greenwich_sidereal_time(obs_date: "ephem.Date") -> float:
-    """Return Greenwich Sidereal Time in radians for a given ephem Date."""
-    obs_gw = ephem.Observer()
-    obs_gw.date = obs_date
-    obs_gw.lat = "0"
-    obs_gw.lon = "0"
+    """Greenwich Sidereal Time in radians for the given ephem Date."""
+    obs_gw          = ephem.Observer()
+    obs_gw.date     = obs_date
+    obs_gw.lat      = "0"
+    obs_gw.lon      = "0"
     obs_gw.pressure = 0
     return float(obs_gw.sidereal_time())
-
-
-def _ra_to_geo_longitude(ra_rad: float, obs_date: "ephem.Date") -> float:
-    """Convert RA to geographic longitude for Midheaven (MC line)."""
-    gst = _greenwich_sidereal_time(obs_date)
-    geo_lon = math.degrees(ra_rad - gst) % 360
-    if geo_lon > 180:
-        geo_lon -= 360
-    return geo_lon
 
 
 def calculate_astrocartography(
@@ -422,17 +384,20 @@ def calculate_astrocartography(
     lat_step: float = 5.0,
 ) -> dict[str, dict]:
     """
-    Calculate astrocartography planetary lines.
-    Returns a dict keyed by planet name, each with:
-      mc_lon   — longitude of MC line (±180)
-      ic_lon   — opposite of MC line
-      ac_lons  — list of (lat, lon) points for the AC (rising) curve
-      dc_lons  — list of (lat, lon) points for the DC (setting) curve
+    Compute planetary astrocartography lines for a birth moment.
+
+    Returns a dict keyed by planet name containing:
+      mc_lon  — geographic longitude of the MC (Midheaven) line
+      ic_lon  — geographic longitude of the IC (Nadir) line (MC ± 180°)
+      ac_pts  — list of (lat, lon) for the AC (rising) curve
+      dc_pts  — list of (lat, lon) for the DC (setting) curve
     """
     if not _EPHEM_OK:
         return {}
 
-    obs_date = ephem.Date(f"{birth_date.year}/{birth_date.month}/{birth_date.day} {birth_time}")
+    obs_date = ephem.Date(
+        f"{birth_date.year}/{birth_date.month}/{birth_date.day} {birth_time}"
+    )
 
     planet_bodies = {
         "Sun":     ephem.Sun(),
@@ -447,48 +412,55 @@ def calculate_astrocartography(
         "Pluto":   ephem.Pluto(),
     }
 
-    result = {}
+    gst_deg = math.degrees(_greenwich_sidereal_time(obs_date))
+
+    result: dict[str, dict] = {}
     for name, body in planet_bodies.items():
         try:
             body.compute(obs_date)
-            ra  = float(body.ra)   # radians
-            dec = float(body.dec)  # radians
+            ra_rad = float(body.ra)
+            dec_r  = float(body.dec)
 
-            # ── MC line: geographic longitude where body culminates ───────────
-            mc_lon = _ra_to_geo_longitude(ra, obs_date)
-            ic_lon = (mc_lon + 180) % 360
+            # MC line: longitude where body culminates (LST == RA at Greenwich)
+            mc_lon = (math.degrees(ra_rad) - gst_deg) % 360
+            if mc_lon > 180:
+                mc_lon -= 360
+
+            # IC line: directly opposite MC
+            ic_lon = mc_lon + 180
             if ic_lon > 180:
                 ic_lon -= 360
 
-            # ── AC / DC curves: where body rises / sets at each latitude ─────
-            # Rising: Hour Angle H = -arccos(-tan(δ)·tan(φ))
-            # Geographic longitude of rising point = LST - H (in degrees)
-            gst_deg = math.degrees(_greenwich_sidereal_time(obs_date))
-            ra_deg  = math.degrees(ra)
-            dec_r   = dec
+            # AC / DC curves: rising / setting at each latitude step
+            # Hour angle at horizon: cos(H) = −tan(δ)·tan(φ)
+            ra_deg = math.degrees(ra_rad)
+            ac_pts: list[tuple[int, float]] = []
+            dc_pts: list[tuple[int, float]] = []
 
-            ac_pts, dc_pts = [], []
             for lat in range(-80, 81, int(lat_step)):
                 lat_r = math.radians(lat)
                 cos_h = -math.tan(dec_r) * math.tan(lat_r)
                 if abs(cos_h) > 1:
-                    continue  # circumpolar or never rises
+                    continue  # circumpolar or never rises at this latitude
                 h_deg = math.degrees(math.acos(cos_h))
-                # AC lon: body is on the Ascendant (rising)
-                ac_geolon = (ra_deg - gst_deg - h_deg) % 360
-                if ac_geolon > 180: ac_geolon -= 360
-                # DC lon: body is on the Descendant (setting)
-                dc_geolon = (ra_deg - gst_deg + h_deg) % 360
-                if dc_geolon > 180: dc_geolon -= 360
-                ac_pts.append((lat, round(ac_geolon, 2)))
-                dc_pts.append((lat, round(dc_geolon, 2)))
+
+                ac_lon = (ra_deg - gst_deg - h_deg) % 360
+                if ac_lon > 180:
+                    ac_lon -= 360
+
+                dc_lon = (ra_deg - gst_deg + h_deg) % 360
+                if dc_lon > 180:
+                    dc_lon -= 360
+
+                ac_pts.append((lat, round(ac_lon, 2)))
+                dc_pts.append((lat, round(dc_lon, 2)))
 
             result[name] = {
-                "mc_lon":  round(mc_lon, 2),
-                "ic_lon":  round(ic_lon, 2),
-                "ac_pts":  ac_pts,
-                "dc_pts":  dc_pts,
-                "symbol":  PLANET_SYMBOLS.get(name, ""),
+                "mc_lon": round(mc_lon, 2),
+                "ic_lon": round(ic_lon, 2),
+                "ac_pts": ac_pts,
+                "dc_pts": dc_pts,
+                "symbol": PLANET_SYMBOLS.get(name, ""),
             }
         except Exception:
             result[name] = {}
@@ -502,37 +474,47 @@ def find_cities_on_lines(
     lat_step: int = 5,
 ) -> dict[str, list[str]]:
     """
-    For each planet find major cities within threshold_deg of any line.
-    Returns {planet: [city_descriptions]}.
+    Return cities within *threshold_deg* of any planetary line.
+    Uses the same *lat_step* grid used when computing AC/DC curves.
     """
     city_results: dict[str, list[str]] = {}
+
     for planet, data in astrocarto.items():
-        hits = []
-        mc = data.get("mc_lon")
-        ic = data.get("ic_lon")
-        ac_pts = {lat: lon for lat, lon in data.get("ac_pts", [])}
-        dc_pts = {lat: lon for lat, lon in data.get("dc_pts", [])}
+        if not data:
+            city_results[planet] = []
+            continue
+
+        hits: list[str] = []
+        mc     = data.get("mc_lon")
+        ic     = data.get("ic_lon")
+        ac_map = {lat: lon for lat, lon in data.get("ac_pts", [])}
+        dc_map = {lat: lon for lat, lon in data.get("dc_pts", [])}
 
         for city_name, clat, clon in MAJOR_CITIES:
-            tags = []
-            # MC/IC are vertical lines — compare longitude only
+            tags: list[str] = []
+
+            # MC / IC are vertical lines — compare longitude only
             if mc is not None and abs(clon - mc) < threshold_deg:
                 tags.append("MC")
             if ic is not None and abs(clon - ic) < threshold_deg:
                 tags.append("IC")
-            # AC/DC — snap city latitude to nearest grid point and neighbours
+
+            # AC / DC: snap city lat to nearest grid point (multiples of lat_step)
             nearest = round(clat / lat_step) * lat_step
-            for lat_key in [nearest, nearest - lat_step, nearest + lat_step]:
-                if lat_key in ac_pts and abs(clon - ac_pts[lat_key]) < threshold_deg:
+            for lk in (nearest, nearest - lat_step, nearest + lat_step):
+                if lk in ac_map and abs(clon - ac_map[lk]) < threshold_deg:
                     tags.append("AC")
                     break
-            for lat_key in [nearest, nearest - lat_step, nearest + lat_step]:
-                if lat_key in dc_pts and abs(clon - dc_pts[lat_key]) < threshold_deg:
+            for lk in (nearest, nearest - lat_step, nearest + lat_step):
+                if lk in dc_map and abs(clon - dc_map[lk]) < threshold_deg:
                     tags.append("DC")
                     break
+
             if tags:
                 hits.append(f"{city_name} ({'/'.join(dict.fromkeys(tags))})")
+
         city_results[planet] = hits
+
     return city_results
 
 
@@ -540,43 +522,50 @@ def find_cities_on_lines(
 # Compatibility
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# Simplified harmonic life-path relationship table
+_LP_HARMONICS: dict[frozenset, int] = {
+    frozenset({1, 5}): 90, frozenset({1, 9}): 85, frozenset({2, 6}): 92,
+    frozenset({2, 8}): 80, frozenset({3, 9}): 88, frozenset({3, 6}): 82,
+    frozenset({4, 8}): 87, frozenset({1, 2}): 70, frozenset({5, 9}): 85,
+    frozenset({6, 9}): 78, frozenset({7, 11}): 90, frozenset({4, 22}): 95,
+    frozenset({1}):    72, frozenset({2}):     80, frozenset({3}):    75,
+    frozenset({4}):    70, frozenset({5}):     68, frozenset({6}):    82,
+    frozenset({7}):    76, frozenset({8}):     74, frozenset({9}):    79,
+}
+
+
 def compatibility_score(
     name1: str, date1: date,
     name2: str, date2: date,
 ) -> dict:
     """
-    Numerological + astrological compatibility between two people or entities.
+    Numerological compatibility between two people or entities.
+    Returns a dict with score (0–99), component data, and a summary label.
     """
     p1 = full_numerology_profile(name1, date1)
     p2 = full_numerology_profile(name2, date2)
 
-    # Life-path harmony matrix (simplified harmonic relationships)
-    HARMONICS = {
-        frozenset({1, 5}): 90, frozenset({1, 9}): 85, frozenset({2, 6}): 92,
-        frozenset({2, 8}): 80, frozenset({3, 9}): 88, frozenset({3, 6}): 82,
-        frozenset({4, 8}): 87, frozenset({1, 2}): 70, frozenset({5, 9}): 85,
-        frozenset({6, 9}): 78, frozenset({7, 11}): 90, frozenset({4, 22}): 95,
-    }
     lp1, lp2 = p1["life_path"], p2["life_path"]
-    base = HARMONICS.get(frozenset({lp1, lp2}), 50 + abs(lp1 - lp2) * 2)
-    base = max(30, min(98, base))
+    # Try the pair; fall back to same-number entry; then default
+    base = _LP_HARMONICS.get(
+        frozenset({lp1, lp2}),
+        _LP_HARMONICS.get(frozenset({lp1}), 50 + abs(lp1 - lp2) * 2),
+    )
+    base = max(30, min(98, int(base)))
 
-    # Expression compatibility
-    exp_diff = abs(p1["expression"] - p2["expression"])
-    exp_bonus = max(0, 10 - exp_diff * 2)
+    exp_diff   = abs(p1["expression"] - p2["expression"])
+    exp_bonus  = max(0, 10 - exp_diff * 2)
 
-    # Soul urge resonance
-    soul_diff = abs(p1["soul_urge"] - p2["soul_urge"])
-    soul_bonus = max(0, 8 - soul_diff * 1.5)
+    soul_diff  = abs(p1["soul_urge"] - p2["soul_urge"])
+    soul_bonus = int(max(0, 8 - soul_diff * 1.5))
 
-    # Julian day synergy
-    jdn_diff = abs(p1["julian_day_number"] - p2["julian_day_number"]) % 365
-    jdn_score = 10 if jdn_diff < 30 else 5 if jdn_diff < 90 else 0
+    jdn_diff   = abs(p1["julian_day_number"] - p2["julian_day_number"]) % 365
+    jdn_score  = 10 if jdn_diff < 30 else 5 if jdn_diff < 90 else 0
 
     total = min(99, base + exp_bonus + soul_bonus + jdn_score)
 
     return {
-        "score":          round(total),
+        "score":          int(total),
         "person1_lp":     lp1,
         "person2_lp":     lp2,
         "expression_gap": exp_diff,
@@ -609,47 +598,54 @@ def _build_numerology_prompt(
     astrocarto_cities: dict | None = None,
     mode: str = "full",
 ) -> str:
+    first = full_name.split()[0] if full_name.strip() else "you"
     lines = [
         f"You are an expert numerologist and tropical astrologer. Give a warm, insightful, "
-        f"and actionable reading. Speak directly to {full_name.split()[0]}.",
+        f"and actionable reading. Speak directly to {first}.",
         "",
-        f"=== SUBJECT ===",
+        "=== SUBJECT ===",
         f"Name: {full_name}",
         f"Birth date: {birth_date.strftime('%B %d, %Y')}",
         "",
-        f"=== THREE-CALENDAR BIRTHDAY NUMBERS ===",
+        "=== THREE-CALENDAR BIRTHDAY NUMBERS ===",
         f"Julian Day Number (JDN):    {profile['julian_day_number']}",
-        f"March-21 Day (Day 1=Mar21): {profile['march21_day']} → numerology reduced: {profile['march21_reduced']}",
-        f"Jan-1 Day (standard DOY):   {profile['jan1_day']} → numerology reduced: {profile['jan1_reduced']}",
+        f"March-21 Day (Day 1=Mar21): {profile['march21_day']} → reduced: {profile['march21_reduced']}",
+        f"Jan-1 Day (standard DOY):   {profile['jan1_day']} → reduced: {profile['jan1_reduced']}",
         "",
-        f"=== NUMEROLOGY CORE NUMBERS ===",
-        f"Life Path:      {profile['life_path']} — {NUMEROLOGY_MEANINGS.get(profile['life_path'], '')}",
-        f"Expression:     {profile['expression']} — {NUMEROLOGY_MEANINGS.get(profile['expression'], '')}",
-        f"Soul Urge:      {profile['soul_urge']} — {NUMEROLOGY_MEANINGS.get(profile['soul_urge'], '')}",
-        f"Personality:    {profile['personality']} — {NUMEROLOGY_MEANINGS.get(profile['personality'], '')}",
-        f"Birthday #:     {profile['birthday_num']}",
-        f"Personal Year:  {profile['personal_year']} (current year cycle)",
+        "=== NUMEROLOGY CORE NUMBERS ===",
+        f"Life Path:     {profile['life_path']} — {NUMEROLOGY_MEANINGS.get(profile['life_path'], '')}",
+        f"Expression:    {profile['expression']} — {NUMEROLOGY_MEANINGS.get(profile['expression'], '')}",
+        f"Soul Urge:     {profile['soul_urge']} — {NUMEROLOGY_MEANINGS.get(profile['soul_urge'], '')}",
+        f"Personality:   {profile['personality']} — {NUMEROLOGY_MEANINGS.get(profile['personality'], '')}",
+        f"Birthday #:    {profile['birthday_num']}",
+        f"Personal Year: {profile['personal_year']} (current year cycle)",
     ]
 
     if natal and "planets" in natal:
         lines += [
             "",
             "=== TROPICAL NATAL CHART ===",
-            f"Ascendant: {natal['ascendant']['sign']} {natal['ascendant']['degree']:.1f}°",
-            f"Midheaven: {natal['midheaven']['sign']} {natal['midheaven']['degree']:.1f}°",
+            f"Ascendant: {natal['ascendant']['sign']} {natal['ascendant']['degree']:.1f}° "
+            f"— {SIGN_MEANINGS.get(natal['ascendant']['sign'], '')}",
+            f"Midheaven: {natal['midheaven']['sign']} {natal['midheaven']['degree']:.1f}° "
+            f"— {SIGN_MEANINGS.get(natal['midheaven']['sign'], '')}",
         ]
         for pname, pdata in natal["planets"].items():
             if "sign" in pdata:
                 sym = pdata.get("symbol", "")
+                meaning = pdata.get("meaning", "")
                 lines.append(
                     f"{sym} {pname:8}: {pdata['sign']:13} {pdata['degree']:.1f}°"
+                    + (f" — {meaning}" if meaning else "")
                 )
 
     if astrocarto_cities:
-        lines += ["", "=== ASTROCARTOGRAPHY — KEY CITIES ON POWER LINES ==="]
-        for planet, cities in astrocarto_cities.items():
-            if cities:
-                lines.append(f"{planet}: {', '.join(cities[:5])}")
+        any_hits = any(v for v in astrocarto_cities.values())
+        if any_hits:
+            lines += ["", "=== ASTROCARTOGRAPHY — POWER CITIES ==="]
+            for planet, cities in astrocarto_cities.items():
+                if cities:
+                    lines.append(f"{planet}: {', '.join(cities[:5])}")
 
     if mode == "full":
         lines += [
@@ -657,12 +653,12 @@ def _build_numerology_prompt(
             "Please provide:",
             "1. A 2-3 paragraph overall life reading weaving ALL THREE birthday calendar numbers.",
             "2. What each core numerology number reveals about their path, gifts, and challenges.",
-            "3. Key astrological themes from the natal chart (if provided).",
-            "4. Top 3–5 astrocartography power cities (if provided) and what they offer.",
+            "3. Key astrological themes from the natal chart (Ascendant, Sun, Moon sign meanings).",
+            "4. Top 3-5 astrocartography power cities and what each line type (MC/IC/AC/DC) offers.",
             "5. Practical advice for the current Personal Year cycle.",
             "Keep the tone warm, empowering, and specific. Avoid generic horoscope language.",
         ]
-    elif mode == "quick":
+    else:
         lines += [
             "",
             "Give a concise 3-5 sentence highlight reading covering the most important insights.",
@@ -720,10 +716,10 @@ def ai_interpret(
     if not key:
         return (
             "[AI reading requires an Anthropic API key.\n"
-            "Set ANTHROPIC_API_KEY in your environment or Settings tab.]"
+            "Set ANTHROPIC_API_KEY in your environment or paste it in the Settings tab.]"
         )
     if not _ANTHROPIC_OK:
-        return "[anthropic Python package not installed — run: pip install anthropic]"
+        return "[anthropic package not installed — run: pip install anthropic]"
 
     try:
         client = anthropic.Anthropic(api_key=key)
@@ -732,13 +728,15 @@ def ai_interpret(
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
+        if not msg.content:
+            return "[AI returned an empty response — try again.]"
         return msg.content[0].text
-    except Exception as e:
-        return f"[AI error: {e}]"
+    except Exception as exc:
+        return f"[AI error: {exc}]"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# High-level public functions used by the UI
+# High-level public API used by the UI
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def full_reading(
@@ -750,21 +748,21 @@ def full_reading(
     api_key: str | None = None,
 ) -> dict:
     """
-    Complete reading: numerology + natal chart + astrocartography + AI text.
-    Returns a single dict with all data and the AI narrative.
+    Complete reading: numerology + natal chart + astrocartography + AI narrative.
+    All computation errors are caught; partial results are still returned.
     """
-    profile  = full_numerology_profile(full_name, birth_date)
-    natal    = calculate_natal_chart(birth_date, birth_time, birth_lat, birth_lon)
-    astro    = calculate_astrocartography(birth_date, birth_time)
-    cities   = find_cities_on_lines(astro)
-    prompt   = _build_numerology_prompt(full_name, birth_date, profile, natal, cities, mode="full")
-    ai_text  = ai_interpret(prompt, api_key=api_key)
+    profile = full_numerology_profile(full_name, birth_date)
+    natal   = calculate_natal_chart(birth_date, birth_time, birth_lat, birth_lon)
+    astro   = calculate_astrocartography(birth_date, birth_time)
+    cities  = find_cities_on_lines(astro)
+    prompt  = _build_numerology_prompt(full_name, birth_date, profile, natal, cities, mode="full")
+    ai_text = ai_interpret(prompt, api_key=api_key)
     return {
-        "profile":       profile,
-        "natal_chart":   natal,
+        "profile":          profile,
+        "natal_chart":      natal,
         "astrocartography": astro,
-        "city_lines":    cities,
-        "ai_reading":    ai_text,
+        "city_lines":       cities,
+        "ai_reading":       ai_text,
     }
 
 
@@ -774,6 +772,7 @@ def compatibility_reading(
     entity_type: str = "people",
     api_key: str | None = None,
 ) -> dict:
+    """Compatibility reading with AI narrative."""
     compat  = compatibility_score(name1, date1, name2, date2)
     prompt  = _build_compatibility_prompt(name1, date1, name2, date2, compat, entity_type)
     ai_text = ai_interpret(prompt, api_key=api_key)
