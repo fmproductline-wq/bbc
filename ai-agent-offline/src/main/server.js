@@ -5,9 +5,7 @@
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
-const { exec, spawn } = require('child_process');
-const path = require('path');
-const { app } = require('electron');
+const { spawn } = require('child_process');
 
 const OLLAMA_BASE = 'http://127.0.0.1:11434';
 

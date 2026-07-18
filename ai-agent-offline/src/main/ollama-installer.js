@@ -21,7 +21,8 @@ function installOllama(onLog) {
       proc.on('close', code => {
         if (code === 0) {
           onLog('Ollama installed. Starting service…');
-          exec('ollama serve &', () => {});
+          const srv = spawn('ollama', ['serve'], { detached: true, stdio: 'ignore' });
+          srv.unref();
           setTimeout(() => resolve(), 2000);
         } else {
           reject(new Error(`Install script exited with code ${code}`));
@@ -44,7 +45,8 @@ function installOllama(onLog) {
             if (code === 0 || code === null) {
               onLog('Installation complete. Starting Ollama…');
               setTimeout(() => {
-                exec('ollama serve', () => {});
+                const srv = spawn('ollama', ['serve'], { detached: true, stdio: 'ignore' });
+                srv.unref();
                 resolve();
               }, 3000);
             } else {

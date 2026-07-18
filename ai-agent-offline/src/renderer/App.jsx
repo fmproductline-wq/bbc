@@ -81,7 +81,7 @@ export default function App() {
         <TitleBar minimal />
         <FirstRunWizard
           onComplete={() => { setSetupDone(true); checkStatus(); }}
-          onSkip={() => setSetupDone(true)}
+          onSkip={() => { setSetupDone(true); checkStatus(); }}
         />
       </div>
     );

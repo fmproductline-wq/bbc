@@ -9,15 +9,15 @@ function openExternal(url) {
     window.open(url, '_blank', 'noopener,noreferrer');
   }
 }
-const OLLAMA_API = 'http://127.0.0.1:11434';
 
+const OLLAMA_API = 'http://127.0.0.1:11434';
 const STEPS = ['welcome', 'installing', 'model', 'done'];
 
 const STARTER_MODELS = [
   { id: 'llama3.2:3b',  label: 'Llama 3.2 · 3B',  size: '~2 GB',  badge: 'Recommended', desc: 'Best balance of speed and intelligence.' },
   { id: 'phi3.5:3.8b',  label: 'Phi 3.5 · 3.8B',  size: '~2.2 GB', badge: 'Smart',       desc: 'Microsoft model, great for reasoning.' },
   { id: 'llama3.2:1b',  label: 'Llama 3.2 · 1B',  size: '~1.3 GB', badge: 'Fast',        desc: 'Lightweight, instant responses.' },
-  { id: 'mistral:7b',   label: 'Mistral · 7B',     size: '~4.1 GB', badge: 'Powerful',   desc: 'Larger model, best quality answers.' },
+  { id: 'mistral:7b',   label: 'Mistral · 7B',     size: '~4.1 GB', badge: 'Powerful',    desc: 'Larger model, best quality answers.' },
 ];
 
 async function checkOllama() {
@@ -29,7 +29,7 @@ async function checkOllama() {
 
 async function getInstalledModels() {
   try {
-    const r = await fetch(`${OLLAMA_API}/api/tags`);
+    const r = await fetch(`${OLLAMA_API}/api/tags`, { signal: AbortSignal.timeout(3000) });
     const d = await r.json();
     return (d.models || []).map(m => m.name);
   } catch { return []; }
@@ -41,7 +41,7 @@ export default function FirstRunWizard({ onComplete, onSkip }) {
   const [installLog, setInstallLog] = useState([]);
   const [installError, setInstallError] = useState('');
   const [selectedModel, setSelectedModel] = useState('llama3.2:3b');
-  const [pullProgress, setPullProgress] = useState(null); // { pct, status }
+  const [pullProgress, setPullProgress] = useState(null);
   const [pulling, setPulling] = useState(false);
   const [pulled, setPulled] = useState(false);
   const abortRef = useRef(null);
@@ -65,7 +65,14 @@ export default function FirstRunWizard({ onComplete, onSkip }) {
     if (alreadyRunning) {
       log('Ollama is already running ✓', 'success');
       setOllamaReady(true);
-      setTimeout(() => setStep('model'), 800);
+      // If models are already installed, skip straight to done
+      const existingModels = await getInstalledModels();
+      if (existingModels.length > 0) {
+        log(`Found ${existingModels.length} model(s) already installed ✓`, 'success');
+        setTimeout(() => setStep('done'), 800);
+      } else {
+        setTimeout(() => setStep('model'), 800);
+      }
       return;
     }
 
@@ -119,7 +126,13 @@ export default function FirstRunWizard({ onComplete, onSkip }) {
       log('Connected to Ollama ✓', 'success');
       setOllamaReady(true);
       setInstallError('');
-      setTimeout(() => setStep('model'), 600);
+      const existingModels = await getInstalledModels();
+      if (existingModels.length > 0) {
+        log(`Found ${existingModels.length} model(s) already installed ✓`, 'success');
+        setTimeout(() => setStep('done'), 600);
+      } else {
+        setTimeout(() => setStep('model'), 600);
+      }
     } else {
       log('Still not reachable. Make sure Ollama is running.', 'warn');
     }
@@ -140,40 +153,46 @@ export default function FirstRunWizard({ onComplete, onSkip }) {
         signal: ctrl.signal,
       });
 
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const lines = decoder.decode(value).split('\n').filter(Boolean);
+        const lines = decoder.decode(value, { stream: true }).split('\n').filter(Boolean);
         for (const line of lines) {
           try {
             const json = JSON.parse(line);
             const pct = json.total ? Math.round((json.completed / json.total) * 100) : 0;
-            setPullProgress({ pct, status: json.status || 'Downloading…', completed: json.completed, total: json.total });
+            setPullProgress({
+              pct,
+              status: json.status || 'Downloading…',
+              completed: json.completed || 0,
+              total: json.total || 0,
+            });
           } catch {}
         }
       }
 
       setPulled(true);
-      setPullProgress({ pct: 100, status: 'Complete!' });
+      setPullProgress({ pct: 100, status: 'Complete!', completed: 0, total: 0 });
       setTimeout(() => setStep('done'), 800);
     } catch (e) {
       if (e.name !== 'AbortError') {
-        setPullProgress({ pct: 0, status: 'Error: ' + e.message });
+        setPullProgress({ pct: 0, status: 'Error: ' + e.message, completed: 0, total: 0 });
+        setPulling(false);
       }
     } finally {
       setPulling(false);
     }
   }
 
-  function skipModel() {
-    setStep('done');
-  }
+  function skipModel() { setStep('done'); }
 
   function formatBytes(b) {
-    if (!b) return '';
+    if (!b || b === 0) return '';
     return b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${(b / 1e6).toFixed(0)} MB`;
   }
 
@@ -181,7 +200,7 @@ export default function FirstRunWizard({ onComplete, onSkip }) {
     <div className="flex-1 flex items-center justify-center p-6 animate-fadein">
       <div className="w-full max-w-lg">
 
-        {/* ── STEP: WELCOME ── */}
+        {/* ── WELCOME ── */}
         {step === 'welcome' && (
           <div className="text-center animate-fadeup">
             <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-violet-900/40">
@@ -214,37 +233,38 @@ export default function FirstRunWizard({ onComplete, onSkip }) {
             >
               Get Started
             </button>
-            <button onClick={onSkip} className="mt-3 text-sm text-[#555] hover:text-[#888] transition-colors">
+            <button
+              onClick={() => { onSkip(); }}
+              className="mt-3 text-sm text-[#555] hover:text-[#888] transition-colors"
+            >
               Skip setup (Ollama already installed)
             </button>
           </div>
         )}
 
-        {/* ── STEP: INSTALLING ── */}
+        {/* ── INSTALLING ── */}
         {step === 'installing' && (
           <div className="animate-fadeup">
-            <h2 className="text-2xl font-bold text-white mb-1.5">Installing Ollama</h2>
+            <h2 className="text-2xl font-bold text-white mb-1.5">Setting Up Ollama</h2>
             <p className="text-[#9a9a9a] text-sm mb-5">The free AI engine that powers your assistant.</p>
 
-            {/* Log */}
             <div
               ref={logRef}
               className="bg-[#161616] border border-[#2a2a2a] rounded-2xl p-4 h-48 overflow-y-auto font-mono text-xs space-y-1 mb-5"
             >
+              {installLog.length === 0 && <span className="text-[#444]">Starting…</span>}
               {installLog.map((l, i) => (
                 <div key={i} className={
                   l.type === 'success' ? 'text-green-400' :
-                  l.type === 'error' ? 'text-red-400' :
-                  l.type === 'warn' ? 'text-amber-400' :
+                  l.type === 'error'   ? 'text-red-400' :
+                  l.type === 'warn'    ? 'text-amber-400' :
                   'text-[#888]'
                 }>
                   {l.type === 'success' ? '✓ ' : l.type === 'error' ? '✗ ' : l.type === 'warn' ? '⚠ ' : '› '}{l.msg}
                 </div>
               ))}
-              {installLog.length === 0 && <span className="text-[#444]">Starting…</span>}
             </div>
 
-            {/* Manual install instructions */}
             {installError && (
               <div className="mb-5 bg-amber-500/8 border border-amber-500/20 rounded-2xl p-4">
                 <p className="text-amber-300 text-sm font-medium mb-2">Manual Installation Required</p>
@@ -271,19 +291,19 @@ export default function FirstRunWizard({ onComplete, onSkip }) {
           </div>
         )}
 
-        {/* ── STEP: MODEL ── */}
+        {/* ── MODEL ── */}
         {step === 'model' && (
           <div className="animate-fadeup">
             <h2 className="text-2xl font-bold text-white mb-1.5">Choose an AI Model</h2>
             <p className="text-[#9a9a9a] text-sm mb-5">
-              Pick a model to download. It's a one-time download — after this, everything works offline.
+              One-time download — after this, everything works offline forever.
             </p>
 
             <div className="space-y-2.5 mb-5">
               {STARTER_MODELS.map(m => (
                 <button
                   key={m.id}
-                  onClick={() => setSelectedModel(m.id)}
+                  onClick={() => !pulling && setSelectedModel(m.id)}
                   disabled={pulling}
                   className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border text-left transition-all ${
                     selectedModel === m.id
@@ -301,8 +321,8 @@ export default function FirstRunWizard({ onComplete, onSkip }) {
                       <span className="text-sm font-semibold text-white">{m.label}</span>
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
                         m.badge === 'Recommended' ? 'bg-violet-600/30 text-violet-300' :
-                        m.badge === 'Fast' ? 'bg-green-600/25 text-green-300' :
-                        m.badge === 'Powerful' ? 'bg-orange-600/25 text-orange-300' :
+                        m.badge === 'Fast'        ? 'bg-green-600/25 text-green-300' :
+                        m.badge === 'Powerful'    ? 'bg-orange-600/25 text-orange-300' :
                         'bg-blue-600/25 text-blue-300'
                       }`}>{m.badge}</span>
                     </div>
@@ -313,7 +333,6 @@ export default function FirstRunWizard({ onComplete, onSkip }) {
               ))}
             </div>
 
-            {/* Pull progress */}
             {pullProgress && (
               <div className="mb-5 bg-white/4 border border-white/8 rounded-2xl p-4">
                 <div className="flex justify-between text-xs text-[#888] mb-2">
@@ -346,13 +365,17 @@ export default function FirstRunWizard({ onComplete, onSkip }) {
                 </span>
               ) : pulled ? '✓ Downloaded' : `Download ${selectedModel}`}
             </button>
-            <button onClick={skipModel} className="mt-3 w-full text-sm text-[#555] hover:text-[#888] transition-colors">
-              Skip — I'll install a model later
+            <button
+              onClick={skipModel}
+              disabled={pulling}
+              className="mt-3 w-full text-sm text-[#555] hover:text-[#888] transition-colors disabled:opacity-30"
+            >
+              Skip — I'll download a model later
             </button>
           </div>
         )}
 
-        {/* ── STEP: DONE ── */}
+        {/* ── DONE ── */}
         {step === 'done' && (
           <div className="text-center animate-fadeup">
             <div className="w-20 h-20 rounded-full bg-green-500/15 border border-green-500/30 flex items-center justify-center mx-auto mb-6">
@@ -368,12 +391,12 @@ export default function FirstRunWizard({ onComplete, onSkip }) {
               onClick={onComplete}
               className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-base transition-all shadow-lg shadow-violet-900/30"
             >
-              Start Chatting
+              Start Chatting →
             </button>
           </div>
         )}
 
-        {/* Step dots */}
+        {/* Step indicator dots */}
         <div className="flex items-center justify-center gap-2 mt-8">
           {STEPS.map(s => (
             <div key={s} className={`h-1.5 rounded-full transition-all duration-300 ${

@@ -124,6 +124,7 @@ export default function ChatView({ conversation, model, models, onModelChange, o
 
             {isStreaming && streamingContent && (
               <MessageBubble
+                key="streaming"
                 message={{ role: 'assistant', content: streamingContent }}
                 streaming
               />

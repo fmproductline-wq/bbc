@@ -14,8 +14,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getVersion: () => ipcRenderer.invoke('get-version'),
 
   installOllama: (onLog) => {
-    ipcRenderer.on('ollama-install-log', (_, line) => onLog(line));
-    return ipcRenderer.invoke('install-ollama');
+    const listener = (_, line) => onLog(line);
+    ipcRenderer.on('ollama-install-log', listener);
+    return ipcRenderer.invoke('install-ollama').finally(() => {
+      ipcRenderer.removeListener('ollama-install-log', listener);
+    });
   },
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 });

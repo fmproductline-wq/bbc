@@ -1,18 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const API_BASE = 'http://127.0.0.1:11434';
-
-async function getServerPort() {
-  if (typeof window !== 'undefined' && window.electronAPI) {
-    return window.electronAPI.getServerPort();
-  }
-  return null;
-}
 
 export function useOllama() {
   const [status, setStatus] = useState('checking'); // 'checking' | 'online' | 'offline'
   const [models, setModels] = useState([]);
-  const portRef = useRef(null);
 
   const fetchModels = useCallback(async () => {
     try {
