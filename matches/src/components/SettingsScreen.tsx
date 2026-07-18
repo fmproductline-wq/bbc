@@ -9,6 +9,8 @@ interface Props {
   onDeleteAccount: () => void;
   onOpenEditor: () => void;
   onOpenMyQuestions: () => void;
+  minCompatibility: number;
+  onChangeMinCompat: (v: number) => void;
 }
 
 const LEVEL_LABELS: Record<PrivacyLevel, string> = {
@@ -61,6 +63,8 @@ export const SettingsScreen: React.FC<Props> = ({
   onDeleteAccount,
   onOpenEditor,
   onOpenMyQuestions,
+  minCompatibility,
+  onChangeMinCompat,
 }) => {
   const [privacy, setPrivacy] = useState({ ...profile.privacy });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -160,9 +164,16 @@ export const SettingsScreen: React.FC<Props> = ({
                 <p className="text-match-text text-sm font-medium">Minimum compatibility</p>
                 <p className="text-match-muted text-xs">Only notify when score is above this</p>
               </div>
-              <span className="text-ember font-bold text-lg">75%</span>
+              <span className="text-ember font-bold text-lg">{minCompatibility}%</span>
             </div>
-            <input type="range" min="50" max="95" defaultValue="75" className="w-full accent-ember" />
+            <input
+              type="range"
+              min="50"
+              max="95"
+              value={minCompatibility}
+              onChange={(e) => onChangeMinCompat(Number(e.target.value))}
+              className="w-full accent-ember"
+            />
           </div>
         </section>
 

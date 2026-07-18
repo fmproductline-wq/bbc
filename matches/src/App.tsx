@@ -127,6 +127,7 @@ interface AppState {
   conversations: Conversation[];
   notifications: Notification[];
   otherProfiles: UserProfile[];
+  minCompatibility: number;
 }
 
 function loadState(): AppState {
@@ -134,7 +135,7 @@ function loadState(): AppState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch {}
-  return { currentUser: null, conversations: [], notifications: [], otherProfiles: [] };
+  return { currentUser: null, conversations: [], notifications: [], otherProfiles: [], minCompatibility: 75 };
 }
 
 function saveState(state: AppState) {
@@ -220,7 +221,7 @@ export default function App() {
       const existingPartners = new Set(
         prev.conversations.flatMap((c) => c.participantIds.filter((id) => id !== user.id))
       );
-      return runBotMatchingInner(user, profiles, existingPartners, prev);
+      return runBotMatchingInner(user, profiles, existingPartners, prev, prev.minCompatibility);
     });
   };
 
@@ -228,7 +229,8 @@ export default function App() {
     user: UserProfile,
     profiles: UserProfile[],
     existingPartners: Set<string>,
-    prev: AppState
+    prev: AppState,
+    threshold: number = 75
   ): AppState => {
 
     const newConvs: Conversation[] = [];
@@ -237,7 +239,7 @@ export default function App() {
     for (const other of profiles) {
       if (existingPartners.has(other.id)) continue;
       const compat = calculateCompatibility(user.answers, other);
-      if (compat.score < 75) continue;
+      if (compat.score < threshold) continue;
 
       const convId = uuidv4();
       const systemMsg: Message = {
@@ -469,6 +471,8 @@ export default function App() {
         }}
         onOpenEditor={() => setScreen("admin_gate")}
         onOpenMyQuestions={() => setScreen("my_questions")}
+        minCompatibility={state.minCompatibility}
+        onChangeMinCompat={(v) => updateState({ minCompatibility: v })}
       />
     );
   }
