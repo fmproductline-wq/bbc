@@ -53,7 +53,7 @@ class TrailingStopMonitor:
         if not mids:
             return
 
-        for pos in list(state.positions):
+        for pos in list(state.open_positions()):
             ticker = pos.token_out
             if ticker in self._moved:
                 continue

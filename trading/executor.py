@@ -96,12 +96,22 @@ async def _request_long(signal: TVSignal, coin: str) -> str:
             hl.set_stop_loss(coin, stop, size)
         except Exception as e:
             logger.warning(f"Stop-loss placement failed: {e}")
+        from trading.trade_history import record_open
+        trade_id = record_open(
+            ticker=coin, action="LONG", entry_price=signal.price,
+            size=size, stop_loss=stop,
+            take_profit1=tp1, take_profit2=tp1 * 1.05,
+            signal_label=signal.indicator, timeframe=signal.timeframe,
+            confidence=0.0,
+        )
         state.positions.append(Position(
             token_in="USD", token_out=coin,
             amount_in=notional, amount_out=size,
             entry_price=signal.price, stop_loss=stop,
             chain="hyperliquid", tx_hash=str(result),
             opened_at=time.time(),
+            take_profit_1=tp1, take_profit_2=tp1 * 1.05,
+            size=size, trade_history_id=trade_id,
         ))
         try:
             fee = collect_fee(coin, size, signal.price, "long")
@@ -146,7 +156,8 @@ async def _request_close_or_short(signal: TVSignal, coin: str) -> str:
 
             async def execute_close(_p=_pos) -> str:
                 hl.market_close(coin)
-                actual_pnl_pct = ((signal.price - _p.entry_price) / _p.entry_price) * 100
+                direction = 1 if (_p.stop_loss is None or _p.stop_loss < _p.entry_price) else -1
+                actual_pnl_pct = ((signal.price - _p.entry_price) / _p.entry_price) * 100 * direction
                 actual_pnl_usd = _p.amount_in * (actual_pnl_pct / 100)
                 _p.closed = True
                 _p.pnl = actual_pnl_pct
@@ -155,6 +166,19 @@ async def _request_close_or_short(signal: TVSignal, coin: str) -> str:
                     actual_pnl_usd,
                     f"{coin} close @ ${signal.price:,.4f}"
                 )
+                # Record close in trade history DB
+                if getattr(_p, "trade_history_id", None):
+                    try:
+                        from trading.trade_history import record_close
+                        record_close(_p.trade_history_id, signal.price, actual_pnl_usd)
+                    except Exception:
+                        pass
+                # Reset trailing stop tracker
+                try:
+                    from trading.trailing_stop import trailing_stop_monitor
+                    trailing_stop_monitor.reset_ticker(coin)
+                except Exception:
+                    pass
                 try:
                     fee = collect_fee(coin, _p.amount_out, signal.price, "close")
                     fee_str = f"\nPlatform fee: ${fee['fee_usd']:.4f}"
@@ -258,6 +282,23 @@ async def manual_long(coin: str, size: float, leverage: int | None = None) -> st
                 hl.set_stop_loss(coin, stop_est, size)
             except Exception:
                 pass
+        tp1_est = price * (1 + cfg.STOP_LOSS_PCT * 2 / 100) if price else 0.0
+        from trading.trade_history import record_open
+        trade_id = record_open(
+            ticker=coin, action="LONG", entry_price=price,
+            size=size, stop_loss=stop_est,
+            take_profit1=tp1_est, take_profit2=tp1_est * 1.05,
+            signal_label="MANUAL", timeframe="manual", confidence=0.0,
+        )
+        state.positions.append(Position(
+            token_in="USD", token_out=coin,
+            amount_in=notional, amount_out=size,
+            entry_price=price, stop_loss=stop_est,
+            chain="hyperliquid", tx_hash=str(result),
+            opened_at=time.time(),
+            take_profit_1=tp1_est, take_profit_2=tp1_est * 1.05,
+            size=size, trade_history_id=trade_id,
+        ))
         try:
             fee = collect_fee(coin, size, price if price else 0.0, "long")
             fee_str = f"\nFee: ${fee['fee_usd']:.4f}"
@@ -301,6 +342,23 @@ async def manual_short(coin: str, size: float, leverage: int | None = None) -> s
                 hl.set_stop_loss(coin, stop_est, size)
             except Exception:
                 pass
+        tp1_est = price * (1 - cfg.STOP_LOSS_PCT * 2 / 100) if price else 0.0
+        from trading.trade_history import record_open
+        trade_id = record_open(
+            ticker=coin, action="SHORT", entry_price=price,
+            size=size, stop_loss=stop_est,
+            take_profit1=tp1_est, take_profit2=tp1_est * 0.95,
+            signal_label="MANUAL", timeframe="manual", confidence=0.0,
+        )
+        state.positions.append(Position(
+            token_in="USD", token_out=coin,
+            amount_in=notional, amount_out=size,
+            entry_price=price, stop_loss=stop_est,
+            chain="hyperliquid", tx_hash=str(result),
+            opened_at=time.time(),
+            take_profit_1=tp1_est, take_profit_2=tp1_est * 0.95,
+            size=size, trade_history_id=trade_id,
+        ))
         try:
             fee = collect_fee(coin, size, price if price else 0.0, "short")
             fee_str = f"\nFee: ${fee['fee_usd']:.4f}"
